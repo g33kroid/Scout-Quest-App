@@ -18,7 +18,7 @@ jobs:
     # tooling: scripts/db-*.sh, plain psql/pg_prove.
     services:
       postgres:
-        image: supabase/postgres:15.14.1.170
+        image: supabase/postgres:17.6.1.170
         env:
           POSTGRES_PASSWORD: postgres
         ports:

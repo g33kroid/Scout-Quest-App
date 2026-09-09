@@ -38,25 +38,26 @@ select is_empty(
   'anon can read no people rows (RLS-filtered to empty)'
 );
 
-select throws_ok(
+-- NOTE: real Supabase pre-grants broad table privileges to anon/authenticated
+-- (ALTER DEFAULT PRIVILEGES at cluster bootstrap) and relies on RLS alone —
+-- docs/spec.md: "RLS is the only real boundary... grants are convenience,
+-- never security." So these must assert zero rows, not a grant-level error:
+-- a bare-Postgres setup (this project's own role provisioning) might also
+-- deny at the grant level, but that's not guaranteed and isn't the real
+-- target's behavior. Confirmed against the actual `supabase start` stack.
+select is_empty(
   $$ select 1 from ledger $$,
-  42501,
-  null,
-  'anon has no grant on ledger at all'
+  'anon can read no ledger rows'
 );
 
-select throws_ok(
+select is_empty(
   $$ select 1 from leaders $$,
-  42501,
-  null,
-  'anon has no grant on leaders at all'
+  'anon can read no leaders rows'
 );
 
-select throws_ok(
+select is_empty(
   $$ select 1 from parent_contacts $$,
-  42501,
-  null,
-  'anon has no grant on parent_contacts at all'
+  'anon can read no parent_contacts rows'
 );
 
 select * from finish();

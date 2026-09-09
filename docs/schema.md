@@ -68,6 +68,19 @@ all derived live from `leaders` / `unit_enrollments` / `patrol_memberships` on
 every call — never trusted from a JWT claim, so a demoted leader or an ended
 enrollment loses access immediately, not at next token refresh.
 
+**Table grants are broad on purpose** (`SELECT`/`INSERT`/`UPDATE`/`DELETE` to
+both `anon` and `authenticated` on every table, via `ALTER DEFAULT
+PRIVILEGES` too, so it covers future tables). This matches how a real
+self-hosted Supabase cluster actually bootstraps — confirmed by running
+`supabase start` locally and inspecting `\dp`. An earlier version of this
+migration under-granted `anon` on a few tables, hoping for defense-in-depth;
+that turned out to be untested against the real target and just diverged
+from it — a table with no grant errors on query instead of returning zero
+rows, which isn't what production does. RLS is the only real gate here, per
+docs/spec.md — `ledger` and `audit_log` are the one deliberate exception,
+with an explicit `REVOKE` on top for their non-negotiable "nobody writes
+directly" rule.
+
 | Table                | Policy intent                                                                                                                                                                                      |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `people`             | Own row, patrol-mates, or same-unit staff can read; admin writes.                                                                                                                                  |
@@ -101,9 +114,11 @@ total, covering every case in `docs/tasks/02-schema-rls.md`'s checklist:
   denial, cross-unit quest UPDATE denial (and a same-unit UPDATE positive
   check).
 - admin: cross-unit read confirmed on `people` and `parent_contacts`.
-- anon: RLS-filtered to zero rows on a granted table (`people`), and a hard
-  permission error on tables anon has no grant on at all (`ledger`,
-  `leaders`, `parent_contacts`) — both are valid shapes of "reads nothing."
+- anon: RLS-filtered to zero rows on every table tested (`people`, `ledger`,
+  `leaders`, `parent_contacts`). Grants are broad to anon/authenticated on
+  every table (see below) — matches how a real Supabase cluster actually
+  bootstraps, confirmed against `supabase start` locally. RLS is the only
+  gate; a narrower grant is not a second line of defense here.
 - ledger + audit_log: admin cannot INSERT/UPDATE/DELETE directly either —
   nobody has a write path except a future `SECURITY DEFINER` function.
 - enrollment expiry: a scout with only a past (`ended_at`) enrollment loses

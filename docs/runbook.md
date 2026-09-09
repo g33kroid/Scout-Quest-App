@@ -5,11 +5,24 @@ on a clean machine, that is a bug in this document.
 
 ## Local setup
 
-Requires: Node 24+, npm, a local Postgres 15 (matches the `supabase/postgres`
-image used in CI and in the self-hosted Docker Compose stack at deploy time —
-see Task 15). **No Docker needed for local dev** — schema, RLS, and pgTAP run
-directly against plain Postgres. Docker only matters for CI (Postgres service
-container) and for the self-hosted VPS deploy.
+Two environments, both needed, different jobs:
+
+- **Native Postgres 15** — fast schema/RLS/pgTAP iteration, no Docker. Good
+  enough for pure DDL/policy work but has no Auth/Storage/Realtime, so it
+  can't exercise real login flows.
+- **`supabase start`** (Docker, via colima on Mac — no Docker Desktop
+  required) — the real target: Postgres 17 + GoTrue (Auth) + PostgREST +
+  Kong + Storage + Realtime + Studio, matching what self-hosted prod runs
+  (Task 15). Anything touching auth, sessions, or the app talking to the
+  database at all needs this running.
+
+Both apply the same migrations in `supabase/migrations/`; run the pgTAP suite
+against whichever one you're actively changing schema/RLS against, and
+against `supabase start` before considering RLS work done — grants and
+bootstrap behavior differ between a from-scratch Postgres and a real Supabase
+cluster (see docs/schema.md's note on this; it bit us once).
+
+### Native Postgres (fast schema iteration)
 
 ```
 brew install postgresql@15
@@ -27,15 +40,43 @@ make install   # writes into the Homebrew Postgres install — run this yourself
                 # an agent session cannot write outside the repo
 ```
 
-Then:
+```
+createdb scout_quest_dev
+DATABASE_URL=postgresql://localhost:5432/scout_quest_dev npm run db:reset
+```
+
+### `supabase start` (real Postgres/Auth/Storage/Realtime, Docker)
+
+No Docker Desktop needed — colima gives you the same Docker CLI/daemon
+headlessly:
+
+```
+brew install docker docker-compose colima
+colima start
+npx supabase start       # first run pulls several GB of images
+```
+
+Prints `API_URL`, `ANON_KEY`, `SERVICE_ROLE_KEY`, `JWT_SECRET`, `DB_URL`, and
+a `STUDIO_URL` (open it in a browser — the whole DB/Auth/Storage admin UI).
+These are Supabase's well-known **local-dev defaults**, identical on every
+machine running `supabase start` — not secrets, safe to keep in `.env.local`
+(gitignored regardless). Paste them into `.env.local` per `.env.example`.
+
+`npx supabase db reset` drops, re-migrates, and restarts the stack — the
+equivalent of `npm run db:reset` but for this environment. `npm run db:test`
+still works against it directly (point `DATABASE_URL` at `DB_URL`'s port,
+`54322` by default) since it's just psql/pg_prove underneath.
+
+`npx supabase stop` tears the stack down; `colima stop` stops the VM
+entirely if you want your machine back.
+
+### Then, either way
 
 ```
 git clone <repo-url>
 cd scout-quest-app
 npm install
-cp .env.example .env.local          # DATABASE_URL defaults to a local db, fill in the rest as needed
-createdb scout_quest_dev            # or whatever DB name is in DATABASE_URL
-npm run db:reset                    # drop+recreate, apply migrations, run pgTAP (empty suite passes)
+cp .env.example .env.local          # fill in from whichever environment above you're using
 npm run dev                         # http://localhost:3000
 ```
 
@@ -48,13 +89,16 @@ npm run format          # npm run format:check in CI
 npm run test            # vitest
 npm run test:e2e        # playwright, needs `npm run build` or a dev server
 npm run db:migrate      # apply new migrations only
-npm run db:test         # pgTAP suite only
-npm run db:reset        # drop, recreate, migrate, test
+npm run db:test         # pgTAP suite only (point DATABASE_URL at either environment)
+npm run db:reset        # drop, recreate, migrate, test — native Postgres only;
+                         # use `npx supabase db reset` for the Supabase stack
 ```
 
-`supabase/config.toml` is kept for the eventual self-hosted Docker Compose
-deploy (Task 15, full Postgres/Auth/Storage/Realtime stack) — it is not used
-by local dev or CI today.
+`supabase/config.toml` pins `major_version = 17` — CI's `supabase/postgres`
+service container and this project's eventual self-hosted Docker Compose
+deploy (Task 15) both track that. Native local Postgres stays on 15 (a
+Homebrew constraint, not a deliberate choice) — fine for schema/RLS
+iteration, just don't treat it as the version-accurate target.
 
 ## Environment variables
 
@@ -65,6 +109,7 @@ See `.env.example` for the full list with inline comments. Summary:
 | `NEXT_PUBLIC_SUPABASE_URL`      | public      | Safe to ship to the browser                                                          |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public      | RLS is the real boundary, not secrecy of this key                                    |
 | `SUPABASE_SERVICE_ROLE_KEY`     | server-only | Bypasses RLS. Read only from `/lib/server`. CI greps the client bundle for this name |
+| `SUPABASE_JWT_SECRET`           | server-only | Signs/verifies session JWTs (GoTrue's and our own custom-minted scout ones)          |
 | `DATABASE_URL`                  | server-only | Direct Postgres connection for `scripts/db-*.sh` (migrations, pgTAP)                 |
 | `LLM_API_KEY`                   | server-only | Quest translation calls only, never shipped to the client                            |
 

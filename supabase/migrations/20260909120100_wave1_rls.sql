@@ -14,9 +14,15 @@
 -- - Role checks (admin/leader/scout) are derived from the `leaders` table on
 --   every call, never trusted from a JWT claim. A demoted leader loses access
 --   immediately, not at next token refresh.
--- - `ledger` and `audit_log` get table-level REVOKEs on top of RLS —
---   belt-and-braces for the two tables where "nobody writes directly" is a
---   non-negotiable rule, not just a policy choice.
+-- - Grants are broad (SELECT/INSERT/UPDATE/DELETE to anon+authenticated on
+--   every table) and RLS does all the real work — this matches how a real
+--   self-hosted Supabase cluster actually bootstraps (`ALTER DEFAULT
+--   PRIVILEGES ... GRANT ALL ... TO anon, authenticated`), confirmed against
+--   `supabase start` locally. docs/spec.md is explicit that grants are
+--   "convenience, never security" — so don't try to use narrower grants as a
+--   second line of defense; RLS is the only line. `ledger` and `audit_log`
+--   get an explicit REVOKE on top for their one true exception: nobody
+--   writes directly, ever, not even admin.
 
 -- ---------------------------------------------------------------------------
 -- Roles. Supabase's self-hosted stack creates these at cluster bootstrap;
@@ -38,6 +44,9 @@ end
 $$;
 
 grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on all tables in schema public to anon, authenticated;
+alter default privileges in schema public
+  grant select, insert, update, delete on tables to anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Identity helpers. STABLE so the planner can cache within a statement.
@@ -159,9 +168,6 @@ create policy people_update_admin on public.people for update
 using (public.is_admin())
 with check (public.is_admin());
 
-grant select, insert, update on public.people to authenticated;
-grant select on public.people to anon;
-
 -- ---------------------------------------------------------------------------
 -- parent_contacts — no scout access, ever. Leader read is unit-scoped.
 -- NOTE (open question, not resolved in this task): docs/spec.md requires "an
@@ -192,8 +198,6 @@ create policy parent_contacts_write_admin on public.parent_contacts for all
 using (public.is_admin())
 with check (public.is_admin());
 
-grant select, insert, update, delete on public.parent_contacts to authenticated;
-
 -- ---------------------------------------------------------------------------
 -- units
 -- ---------------------------------------------------------------------------
@@ -209,9 +213,6 @@ using (
 create policy units_write_admin on public.units for all
 using (public.is_admin())
 with check (public.is_admin());
-
-grant select, insert, update, delete on public.units to authenticated;
-grant select on public.units to anon;
 
 -- ---------------------------------------------------------------------------
 -- unit_enrollments
@@ -229,9 +230,6 @@ create policy unit_enrollments_write_admin on public.unit_enrollments for all
 using (public.is_admin())
 with check (public.is_admin());
 
-grant select, insert, update, delete on public.unit_enrollments to authenticated;
-grant select on public.unit_enrollments to anon;
-
 -- ---------------------------------------------------------------------------
 -- seasons — not sensitive, readable by anyone signed in.
 -- ---------------------------------------------------------------------------
@@ -243,9 +241,6 @@ using (true);
 create policy seasons_write_admin on public.seasons for all
 using (public.is_admin())
 with check (public.is_admin());
-
-grant select, insert, update, delete on public.seasons to authenticated;
-grant select on public.seasons to anon;
 
 -- ---------------------------------------------------------------------------
 -- patrols
@@ -262,9 +257,6 @@ using (
 create policy patrols_write on public.patrols for all
 using (public.is_admin_or_leader_of(unit_id))
 with check (public.is_admin_or_leader_of(unit_id));
-
-grant select, insert, update, delete on public.patrols to authenticated;
-grant select on public.patrols to anon;
 
 -- ---------------------------------------------------------------------------
 -- patrol_memberships
@@ -301,8 +293,6 @@ with check (
   )
 );
 
-grant select, insert, update, delete on public.patrol_memberships to authenticated;
-
 -- ---------------------------------------------------------------------------
 -- leaders — scouts never see this table. A leader sees only their own row.
 -- ---------------------------------------------------------------------------
@@ -317,8 +307,6 @@ using (
 create policy leaders_write_admin on public.leaders for all
 using (public.is_admin())
 with check (public.is_admin());
-
-grant select, insert, update, delete on public.leaders to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- sessions
@@ -335,8 +323,6 @@ using (
 create policy sessions_write on public.sessions for all
 using (public.is_admin_or_leader_of(unit_id))
 with check (public.is_admin_or_leader_of(unit_id));
-
-grant select, insert, update, delete on public.sessions to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- quests — scouts only ever see published, non-expired quests in their unit.
@@ -360,8 +346,6 @@ using (
 create policy quests_write on public.quests for all
 using (public.is_admin_or_leader_of(unit_id))
 with check (public.is_admin_or_leader_of(unit_id));
-
-grant select, insert, update on public.quests to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- quest_translations — mirrors quests visibility via the parent quest.
@@ -401,8 +385,6 @@ with check (
   )
 );
 
-grant select, insert, update, delete on public.quest_translations to authenticated;
-
 -- ---------------------------------------------------------------------------
 -- quest_prereqs — visibility follows the gated quest (quest_id).
 -- ---------------------------------------------------------------------------
@@ -441,8 +423,6 @@ with check (
   )
 );
 
-grant select, insert, update, delete on public.quest_prereqs to authenticated;
-
 -- ---------------------------------------------------------------------------
 -- ledger — append-only. Scouts see only their own rows (raw ledger rows for
 -- patrol-mates are NOT exposed here — too much detail per row; a
@@ -464,7 +444,6 @@ using (
   )
 );
 
-grant select on public.ledger to authenticated;
 revoke insert, update, delete on public.ledger from authenticated, anon, public;
 
 -- ---------------------------------------------------------------------------
@@ -509,8 +488,6 @@ with check (
   and status = 'excused'
 );
 
-grant select, insert, update, delete on public.attendance to authenticated;
-
 -- ---------------------------------------------------------------------------
 -- audit_log — admin-read-only, and genuinely append-only: no UPDATE/DELETE
 -- policy for ANYONE, admin included. Writes happen only via future
@@ -521,7 +498,6 @@ alter table public.audit_log enable row level security;
 create policy audit_log_select_admin on public.audit_log for select
 using (public.is_admin());
 
-grant select on public.audit_log to authenticated;
 revoke insert, update, delete on public.audit_log from authenticated, anon, public;
 
 -- ---------------------------------------------------------------------------
