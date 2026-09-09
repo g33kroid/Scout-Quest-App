@@ -57,7 +57,7 @@ jobs:
       - name: Unit tests
         run: npm run test
 
-      # 4. migrations + pgTAP (empty suite passes)
+      # 4. migrations + pgTAP
       - name: DB migrate
         run: npm run db:migrate
       - name: pgTAP suite
