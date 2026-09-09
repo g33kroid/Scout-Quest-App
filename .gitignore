@@ -45,3 +45,9 @@ next-env.d.ts
 # supabase local
 /supabase/.branches
 /supabase/.temp
+
+# graphify — regenerable knowledge graph, not source
+/graphify-out/
+
+# claude code — personal, machine-specific settings
+/.claude/settings.local.json
