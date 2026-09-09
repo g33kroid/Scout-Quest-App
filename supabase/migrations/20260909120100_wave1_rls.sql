@@ -67,7 +67,7 @@ returns public.leader_role
 language sql
 stable
 security definer
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
   select role from public.leaders where person_id = public.current_uid()
 $$;
@@ -77,17 +77,24 @@ returns uuid
 language sql
 stable
 security definer
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
   select unit_id from public.leaders where person_id = public.current_uid()
 $$;
 
+-- coalesce(...,false): these must NEVER return SQL NULL. In an RLS `USING`
+-- clause NULL happens to behave like false (masking this), but plpgsql's
+-- `IF NOT is_admin_or_leader_of(...) THEN raise exception` does NOT — `NOT
+-- NULL` is NULL, and `IF NULL THEN` is treated as false, silently skipping
+-- the raise and letting an unrecognized caller through. Found by
+-- leader_reset_scout_pin() (Task 03) actually granting an unauthorized
+-- reset instead of raising. Fix once here rather than per call site.
 create or replace function public.is_admin()
 returns boolean
 language sql
 stable
 as $$
-  select public.current_leader_role() = 'admin'
+  select coalesce(public.current_leader_role() = 'admin', false)
 $$;
 
 create or replace function public.is_leader_of_unit(target_unit uuid)
@@ -95,8 +102,11 @@ returns boolean
 language sql
 stable
 as $$
-  select public.current_leader_role() = 'leader'
-    and public.current_leader_unit_id() = target_unit
+  select coalesce(
+    public.current_leader_role() = 'leader'
+      and public.current_leader_unit_id() = target_unit,
+    false
+  )
 $$;
 
 create or replace function public.is_admin_or_leader_of(target_unit uuid)
@@ -114,7 +124,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
   select exists (
     select 1 from public.unit_enrollments
@@ -129,7 +139,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
   select exists (
     select 1

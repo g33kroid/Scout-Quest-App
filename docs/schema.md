@@ -135,3 +135,68 @@ running `npm run db:reset` three times in a row: 34/34 green each time.
 Auth (PIN/TOTP, Task 03), the ledger write functions (Task 04), and the
 `SECURITY DEFINER` audit-on-read function for `parent_contacts` (see above,
 unassigned). This task is schema + RLS + pgTAP only.
+
+## Task 03 additions — auth schema
+
+`scout_credentials` (person_id, argon2id `pin_hash`, `failed_attempts`,
+`lockout_count`, `locked_until`), `join_codes` (unit-scoped, `expires_at`,
+never deleted), `ip_rate_limits` (per-`(ip, scope)` counters — `scope`
+distinguishes `scout_pin_login` from `leader_login`, tracked independently
+per docs/tasks/03-auth.md). Nobody writes any of these three directly —
+same append/function-only pattern as `ledger`/`audit_log`. All login,
+lockout, and PIN-reset logic lives in `SECURITY DEFINER` functions
+(`verify_join_code`, `find_scout_for_login`, `scout_login_is_locked`,
+`scout_login_record`, `leader_login_is_locked`, `leader_login_record`,
+`leader_reset_scout_pin`), callable by `anon` since login is necessarily
+pre-session.
+
+**Foundational assumption, now load-bearing**: `people.id` IS
+`auth.users.id`. `current_uid()` reads the JWT `sub` claim straight into
+`people.id` comparisons everywhere; that's only correct because every
+person — scout or leader — has exactly one `auth.users` row with that same
+UUID. Scouts get theirs at enrollment (Task 14) with a synthetic,
+never-disclosed email; the PIN never touches GoTrue.
+
+**Escalating lockout formula** (not specified by the task doc, a judgment
+call — `next_lockout_duration()`): 15 minutes, doubling per repeat lockout,
+capped at 24 hours.
+
+**Nickname uniqueness within a unit isn't a DB constraint.**
+`find_scout_for_login` fails closed (returns nothing) on an ambiguous match
+rather than guessing which scout. Task 14 (scout creation) should enforce
+uniqueness at write time so this is never actually hit in practice.
+
+### Two real bugs found building this, not just test artifacts
+
+1. **`is_admin()` / `is_leader_of_unit()` could return SQL `NULL`**, not just
+   `true`/`false`, whenever `current_leader_role()` found no `leaders` row
+   (an ordinary scout). In an RLS `USING` clause this happened to behave
+   like `false` (masking the problem all through Task 02's suite — NULL is
+   excluded same as false there). But `leader_reset_scout_pin()`'s explicit
+   `IF NOT public.is_admin_or_leader_of(...) THEN raise exception` does
+   **not** get the same protection: `NOT NULL` is `NULL`, and `IF NULL
+THEN` is treated as false in PL/pgSQL — silently skipping the raise and
+   letting an _unrecognized, non-leader caller reset any scout's PIN_.
+   Caught by a manual smoke test before pgTAP was even written, not by the
+   test suite itself. Fixed by wrapping both functions in
+   `coalesce(..., false)` so they can never return anything but a real
+   boolean, in any calling context.
+2. **`SECURITY DEFINER` functions with a pinned `search_path` broke on the
+   real Supabase stack, not on native Postgres.** `pgcrypto` (needed by
+   `uuid_generate_v7()`, used everywhere via `id uuid default
+uuid_generate_v7()`) lives in `public` on a from-scratch local Postgres
+   (wherever our own `create extension if not exists pgcrypto` happened to
+   land it) but in a dedicated `extensions` schema on a real Supabase
+   cluster (pre-installed at bootstrap, our `IF NOT EXISTS` a no-op there).
+   Every `SECURITY DEFINER` function pins `search_path = public, pg_temp`
+   for security (avoids search-path-hijacking) — which also excludes
+   `extensions`, so any `uuid_generate_v7()` call triggered from inside one
+   of those functions (e.g. the default `audit_log.id` on an insert)
+   failed with `function gen_random_bytes(integer) does not exist` — but
+   only on the real stack, only when reached transitively through a
+   `SECURITY DEFINER` call. Fixed by adding `extensions` to every pinned
+   `search_path` (harmless on native Postgres, where that schema doesn't
+   exist — Postgres just skips it). **Lesson for every task from here on**:
+   run the pgTAP suite against `supabase start`, not only native Postgres,
+   before calling schema/RLS work done — docs/runbook.md now says this
+   explicitly.
