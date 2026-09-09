@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # 1. lockfile respected
+      - name: Install (npm ci)
+        run: npm ci
+
+      # 2. typecheck, lint, format check
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Format check
+        run: npm run format:check
+
+      # 3. unit tests
+      - name: Unit tests
+        run: npm run test
+
+      # 4. supabase db reset + pgTAP
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start Supabase local stack
+        run: supabase start
+      - name: DB reset + pgTAP suite
+        run: supabase db reset
+
+      # public repo — no real data in tracked files
+      - name: Real-data gate (UAE phone pattern)
+        run: bash scripts/check-no-real-data.sh
+
+      - name: Build
+        run: npm run build
+
+      # 5. Playwright E2E against the local build
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: E2E tests
+        run: npm run test:e2e
+        env:
+          CI: "true"
+
+      # 6. secret gate on the client bundle
+      - name: Secret gate (client bundle)
+        run: bash scripts/check-client-bundle-secrets.sh
+
+      # 7. gitleaks on the diff
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 8. npm audit
+      - name: npm audit (high+)
+        run: npm audit --audit-level=high
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
