@@ -12,6 +12,24 @@ env:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # Plain Postgres w/ pgtap baked in (the same image `supabase start` uses
+    # under the hood) — no Supabase CLI/Docker orchestration required. Keeps
+    # local dev (native Postgres, docs/runbook.md) and CI on the same schema
+    # tooling: scripts/db-*.sh, plain psql/pg_prove.
+    services:
+      postgres:
+        image: supabase/postgres:15.14.1.170
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
 
@@ -19,6 +37,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
+
+      - name: Install postgresql-client (psql)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
 
       # 1. lockfile respected
       - name: Install (npm ci)
@@ -36,14 +57,11 @@ jobs:
       - name: Unit tests
         run: npm run test
 
-      # 4. supabase db reset + pgTAP
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
-      - name: Start Supabase local stack
-        run: supabase start
-      - name: DB reset + pgTAP suite
-        run: supabase db reset
+      # 4. migrations + pgTAP (empty suite passes)
+      - name: DB migrate
+        run: npm run db:migrate
+      - name: pgTAP suite
+        run: npm run db:test
 
       # public repo — no real data in tracked files
       - name: Real-data gate (UAE phone pattern)

@@ -13,6 +13,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "db:migrate": "bash scripts/db-migrate.sh",
+    "db:test": "bash scripts/db-test.sh",
+    "db:reset": "bash scripts/db-reset.sh",
     "prepare": "husky"
   },
   "dependencies": {

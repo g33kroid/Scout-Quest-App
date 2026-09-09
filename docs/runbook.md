@@ -5,21 +5,39 @@ on a clean machine, that is a bug in this document.
 
 ## Local setup
 
-Requires: Node 24+, npm, Docker (Docker Desktop or equivalent — Supabase's
-local stack runs as Docker containers under the hood).
+Requires: Node 24+, npm, a local Postgres 15 (matches the `supabase/postgres`
+image used in CI and in the self-hosted Docker Compose stack at deploy time —
+see Task 15). **No Docker needed for local dev** — schema, RLS, and pgTAP run
+directly against plain Postgres. Docker only matters for CI (Postgres service
+container) and for the self-hosted VPS deploy.
+
+```
+brew install postgresql@15
+brew services start postgresql@15
+```
+
+pgTAP is not in Homebrew — build it from source once, against that Postgres:
+
+```
+git clone https://github.com/theory/pgtap.git
+cd pgtap
+export PATH="/usr/local/opt/postgresql@15/bin:$PATH"
+make
+make install   # writes into the Homebrew Postgres install — run this yourself,
+                # an agent session cannot write outside the repo
+```
+
+Then:
 
 ```
 git clone <repo-url>
 cd scout-quest-app
 npm install
-cp .env.example .env.local          # fill in values printed by `supabase start`
-npx supabase start                  # spins up local Postgres/Auth/Storage/Realtime
-npx supabase db reset               # applies migrations + runs pgTAP
+cp .env.example .env.local          # DATABASE_URL defaults to a local db, fill in the rest as needed
+createdb scout_quest_dev            # or whatever DB name is in DATABASE_URL
+npm run db:reset                    # drop+recreate, apply migrations, run pgTAP (empty suite passes)
 npm run dev                         # http://localhost:3000
 ```
-
-`supabase start` prints the local API URL, anon key, and service-role key —
-paste those into `.env.local`. Never commit `.env.local`.
 
 Useful commands:
 
@@ -29,8 +47,14 @@ npm run lint
 npm run format          # npm run format:check in CI
 npm run test            # vitest
 npm run test:e2e        # playwright, needs `npm run build` or a dev server
-npx supabase stop       # tear down the local stack
+npm run db:migrate      # apply new migrations only
+npm run db:test         # pgTAP suite only
+npm run db:reset        # drop, recreate, migrate, test
 ```
+
+`supabase/config.toml` is kept for the eventual self-hosted Docker Compose
+deploy (Task 15, full Postgres/Auth/Storage/Realtime stack) — it is not used
+by local dev or CI today.
 
 ## Environment variables
 
@@ -41,6 +65,7 @@ See `.env.example` for the full list with inline comments. Summary:
 | `NEXT_PUBLIC_SUPABASE_URL`      | public      | Safe to ship to the browser                                                          |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public      | RLS is the real boundary, not secrecy of this key                                    |
 | `SUPABASE_SERVICE_ROLE_KEY`     | server-only | Bypasses RLS. Read only from `/lib/server`. CI greps the client bundle for this name |
+| `DATABASE_URL`                  | server-only | Direct Postgres connection for `scripts/db-*.sh` (migrations, pgTAP)                 |
 | `LLM_API_KEY`                   | server-only | Quest translation calls only, never shipped to the client                            |
 
 Server-only vars are read exclusively from `/lib/server` — that boundary is
