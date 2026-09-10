@@ -318,3 +318,114 @@ with itself — a real property of the rate limiter working correctly, not
 test flakiness to paper over. `docs/tasks/03-auth.md` only asks for one
 mobile-viewport E2E run anyway, so `*-login.spec.ts` is now excluded from
 every project but `360-baseline`.
+
+## Task 05 — the 15-second leader scoring screen
+
+`app/leader/page.tsx` (context resolution: today's session, or a one-tap
+chooser for 2+), `app/leader/scoring-screen.tsx` (client — multi-select
+roster, tier buttons, confirm), `app/leader/actions.ts` (`award_points()`
+via the leader's own authenticated session, never admin — its authorisation
+check depends on who's actually calling). No schema changes; builds
+entirely on Tasks 02–04.
+
+### Scope not built here, and why
+
+- **Task 08 (offline queue) doesn't exist yet**, but the task doc asks for
+  "optimistic UI... queued for sync (Task 08)." Built the optimistic half
+  (award appears instantly, rolls back with an inline retry on failure) but
+  not a durable local queue — that's explicitly Task 08's job (the
+  graphify-surfaced god-node "Dexie.js IndexedDB Outbox Queue" belongs to
+  that task, not this one). A leader who goes offline mid-tap today gets a
+  visible retry, not silent loss, but doesn't get durability across an app
+  close — flag this gap for whoever picks up Task 08.
+- **Camp-station context resolution is out of scope.** The task's "today's
+  session for their unit, or the active camp station if one is assigned"
+  only resolves the unit-session half — camp stations don't exist until
+  Wave 3 (`docs/spec.md` explicitly excludes the camp designer from Wave 1).
+- **Bilingual/RTL text is not built.** English strings only — Task 11 owns
+  translation infrastructure (none exists yet: no next-intl, no locale
+  routing, no `quest_translations`-style UI-chrome table). Logical CSS
+  properties are used throughout (`text-start`, no hardcoded `left`/`right`),
+  so the _layout_ already mirrors correctly under `dir="rtl"` — only the
+  actual Arabic strings are missing, which is exactly the boundary Task 11
+  is supposed to own.
+- **Avatars are an initials placeholder**, not the real `avatar_config`
+  JSONB renderer — that's Task 12.
+- **Session creation is out of scope.** Nothing in Wave 1's task list
+  visibly owns "a leader/admin schedules a session" — `sessions` rows are
+  assumed to exist (seeded for E2E, `scripts/seed-e2e-fixtures.mjs`). Flag
+  this as a real gap: as written, nothing in Wave 1 currently creates one.
+
+### Two real bugs found building this
+
+1. **`useTransition`'s `isPending` is not a synchronous guard.** The first
+   version of the confirm button used `disabled={!canConfirm}` where
+   `canConfirm` depended on `useTransition`'s `isPending`. React schedules a
+   transition's pending flag at low priority — a Playwright test that fired
+   two `click` events on the DOM element back-to-back (closer to a real
+   rapid double-tap than two sequential Playwright `.click()` calls, which
+   each wait for actionability) found `el.disabled` still `false` immediately
+   after the first dispatch. For a button whose entire purpose is "prevent a
+   double-award," that's a real gap, not a false alarm — `award_points()`'s
+   own idempotency key (Task 04) is still the ultimate backstop, but the
+   client shouldn't rely on it alone. Fixed with a `useRef` boolean checked
+   and set with a plain `if` at the very top of the handler, before any
+   state update — genuinely synchronous, closes the race regardless of
+   React's render/commit timing. `useState`/`isSaving` is kept only to drive
+   the visible disabled/"Saving…" UI, not as the actual guard.
+2. **`zod`'s `.uuid()` enforces RFC4122 version/variant nibbles**, which
+   this project's own hand-crafted test-fixture IDs (e.g.
+   `9e000000-0000-0000-0000-000000000700`, readable-on-purpose, version
+   nibble `0`) don't satisfy — real `uuid_generate_v7()` rows always do.
+   `award_points()`'s server action was the first place a UUID coming from
+   fixture data got zod-validated directly, and it rejected every id with
+   "Invalid selection." Fixed by loosening to a shape-only regex
+   (`[0-9a-f]{8}-...`): Postgres itself rejects a genuinely malformed uuid
+   at the RPC's type-cast boundary regardless, and RLS +
+   `award_points()`'s own authorisation check are the real boundary either
+   way (`docs/spec.md` — app-layer validation is convenience, not security).
+
+### One fixture-hygiene bug, not a product bug — but it looked like one
+
+`scripts/seed-e2e-fixtures.mjs`'s `unit_enrollments` insert used
+`on conflict do nothing` against a table with **no unique constraint** on
+`(person_id, unit_id)` (by design — a scout can leave and rejoin a unit as
+distinct historical rows). That `on conflict` had no target, so it silently
+did nothing, and every re-run of the seed script (this session re-ran it
+often, iterating on Task 05) inserted a **second** active enrollment row for
+the same scout. That duplicate then tripped `find_scout_for_login()`'s
+ambiguous-match guard (Task 03 — "zero or more than one match fails
+closed") — the scout's own login started failing with no code change on the
+auth side at all, and no error message beyond "credentials don't match."
+Fixed with a `WHERE NOT EXISTS` guard instead of a nonexistent conflict
+target. Lesson: an idempotency claim (`on conflict`) only holds if a
+constraint actually backs it — worth grepping for other `on conflict`
+clauses against unconstrained columns.
+
+### Test design: cross-file shared identities don't survive concurrency
+
+`leader-login.spec.ts` and `leader-scoring.spec.ts` originally shared one
+seeded leader. TOTP enrollment only returns its secret **once** — whichever
+spec ran second saw an already-enrolled leader and had nothing to compute a
+verification code from. Serializing tests _within_ one file
+(`test.describe.configure({mode:"serial"})`) wasn't enough, since
+`fullyParallel` still runs different _files_ in separate worker processes
+with no shared module state. Fixed two ways: `leader-scoring.spec.ts` got
+its own leader identity (`scoringLeaderId` — a unit legitimately has
+several leaders, so this also matches the real data model better than
+sharing one), and `playwright.config.ts` now caps the whole suite at
+`workers: 1` — small enough that full serialization costs seconds, and it
+removes this entire class of shared-mutable-server-state collision instead
+of chasing it spec pair by spec pair.
+
+### What still needs a human, not a tool
+
+The task's two "Done when" conditions are both physically unautomatable by
+an agent: a **stopwatch test** (award a tier to 8 scouts in under 15
+seconds, on a real mid-range Android phone, timed) and **a real leader
+using it once without instruction**. Everything else — the actual
+correctness of the flow, idempotency, RLS, zero-tap context resolution,
+double-tap protection — is built and verified end-to-end (75/75 pgTAP,
+12/12 Playwright E2E against the real `supabase start` stack). The
+stopwatch number and the real-leader confirmation still need to happen and
+be recorded in the PR, per the task file.

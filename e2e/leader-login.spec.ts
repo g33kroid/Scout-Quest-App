@@ -33,8 +33,11 @@ test("completing TOTP enrollment reaches the leader home", async ({ page }) => {
   await page.getByLabel("6-digit code").fill(totp.generate());
   await page.getByRole("button", { name: "Confirm" }).click();
 
-  await expect(page).toHaveURL(/\/leader$/);
-  await expect(page.getByText("Signed in.")).toBeVisible();
+  // Task 05: /leader auto-resolves today's session and redirects there —
+  // this leader's unit always has exactly one (seeded), so this is the
+  // "zero taps" case, not a bare /leader landing page anymore.
+  await expect(page).toHaveURL(/\/leader\?session=/);
+  await expect(page.getByRole("button", { name: "Confirm" })).toBeVisible();
 });
 
 test("a direct hit on a leader route without a session redirects to login", async ({
