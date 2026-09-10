@@ -200,3 +200,52 @@ uuid_generate_v7()`) lives in `public` on a from-scratch local Postgres
    run the pgTAP suite against `supabase start`, not only native Postgres,
    before calling schema/RLS work done — docs/runbook.md now says this
    explicitly.
+
+## Task 04 additions — ledger write path
+
+No new tables. Three `SECURITY DEFINER` functions plus a view, all in
+`supabase/migrations/20260910100000_task04_ledger_functions.sql`:
+
+- **`award_points(person_ids[], tier, reason, quest_id, session_id,
+idempotency_key)`** — the only sanctioned way points get written. Tier →
+  points is a hardcoded `CASE` inside the function; there is no parameter a
+  client could use to supply a raw number. Validates every person is
+  actively enrolled, the caller is admin or that person's unit leader, and
+  (if given) the quest is published and belongs to the same unit — one bad
+  entry anywhere in the array raises, which aborts the whole call
+  transactionally (Postgres functions are all-or-nothing on exception).
+  `docs/tasks/04-ledger.md` names the tier parameter type `point_tier`;
+  reused `quest_tier` (Task 02) instead of adding a duplicate enum with the
+  same four values.
+- **Idempotency**: the caller passes one key per batch, but `ledger`'s
+  `UNIQUE` constraint is per-row, so each row's stored key is derived as
+  `idempotency_key || ':' || person_id`. A replay (same key, same people)
+  produces the same derived keys; `ON CONFLICT DO NOTHING` + a final
+  `SELECT` returns the full row set whether this call was the first or a
+  replay. This is enforced by Postgres's own unique constraint, not by any
+  lock the function takes — verified under **real** concurrency with
+  `scripts/demo-concurrent-award.sh` (50 concurrent duplicate calls, same
+  key, exactly one row), against both native Postgres and the real
+  `supabase start` stack.
+- **`reverse_ledger_entry(ledger_id, reason)`** — writes a compensating
+  negative row, never touches the original. Only reverses `'award'` rows
+  (`'attendance'` carries no points to compensate; `'correction'` would need
+  its own chain). Same idempotent-by-derived-key shape as `award_points` —
+  reversing the same entry twice returns the existing reversal, doesn't
+  double-reverse.
+- **`person_totals`** view — `sum(delta) group by person_id`, `WITH
+(security_invoker = true)`. Without that option a view runs with its
+  _owner's_ privileges (the migration-applying role, typically a superuser)
+  and would bypass `ledger`'s RLS entirely; `security_invoker` makes it
+  respect the querying role's own row visibility instead — same
+  own-rows/admin/same-unit-leader boundary as querying `ledger` directly.
+
+### One bug found building this
+
+`reverse_ledger_entry` originally tried `return (select l.* from ledger l
+where ...)` where the function's return type is the composite `ledger` row
+— `l.*` expands to separate columns, which doesn't typecheck as a single
+composite value (`ERROR: subquery must return only one column`). Fixed by
+selecting the row itself (`select l from ledger l where ...`), not its
+expanded columns. Caught immediately by the first manual smoke test, before
+pgTAP.
