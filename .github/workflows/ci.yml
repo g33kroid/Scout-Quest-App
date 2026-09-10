@@ -32,6 +32,10 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
+        with:
+          # gitleaks diffs event.before..event.after — needs real history,
+          # not the default shallow (depth-1) clone.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
