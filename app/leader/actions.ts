@@ -56,3 +56,71 @@ export async function awardPointsAction(input: {
   }
   return { ok: true };
 }
+
+const excuseCategorySchema = z.enum([
+  "unwell",
+  "exams",
+  "family",
+  "travel",
+  "transport",
+  "other",
+  "none_given",
+]);
+
+const attendanceSchema = z.object({
+  sessionId: uuidShape,
+  personId: uuidShape,
+  status: z.enum(["present", "absent", "excused"]),
+  excuseCategory: excuseCategorySchema.nullable().optional(),
+  note: z.string().max(280).nullable().optional(),
+});
+
+export interface RecordAttendanceResult {
+  ok: boolean;
+  error?: string;
+}
+
+// attendance is append-only (Task 06) — this is always an INSERT, never an
+// update. RLS (attendance_insert_staff) is the actual authorization check;
+// recorded_by is set here from the caller's own session rather than trusted
+// from client input.
+export async function recordAttendanceAction(input: {
+  sessionId: string;
+  personId: string;
+  status: string;
+  excuseCategory?: string | null;
+  note?: string | null;
+}): Promise<RecordAttendanceResult> {
+  const parsed = attendanceSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid attendance entry." };
+  }
+  if (parsed.data.status === "excused" && !parsed.data.excuseCategory) {
+    return {
+      ok: false,
+      error: "Choose a category — 'none given' if the scout prefers not to say.",
+    };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "Not signed in." };
+  }
+
+  const { error } = await supabase.from("attendance").insert({
+    person_id: parsed.data.personId,
+    session_id: parsed.data.sessionId,
+    status: parsed.data.status,
+    excuse_category: parsed.data.status === "excused" ? parsed.data.excuseCategory : null,
+    note: parsed.data.note || null,
+    recorded_by: user.id,
+  });
+
+  if (error) {
+    return { ok: false, error: "Could not save that. Try again." };
+  }
+  return { ok: true };
+}

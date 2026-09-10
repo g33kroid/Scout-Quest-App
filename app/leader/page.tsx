@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import {
+  getAttentionNeededScouts,
   getRosterForSession,
   getTodaysSessionsForLeader,
 } from "@/lib/server/leader-roster";
@@ -60,6 +61,13 @@ export default async function LeaderHomePage({
   }
 
   const roster = await getRosterForSession(sessionId);
+  const attentionNeeded = await getAttentionNeededScouts(roster.map((s) => s.personId));
 
-  return <ScoringScreen sessionId={sessionId} initialRoster={roster} />;
+  return (
+    <ScoringScreen
+      sessionId={sessionId}
+      initialRoster={roster}
+      attentionNeeded={attentionNeeded}
+    />
+  );
 }
