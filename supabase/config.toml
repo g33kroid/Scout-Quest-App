@@ -172,8 +172,13 @@ enable_refresh_token_rotation = true
 # Allows refresh tokens to be reused after expiry, up to the specified interval in seconds.
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
-# Allow/disallow new user signups to your project.
-enable_signup = true
+# Allow/disallow new user signups to your project. Off: leader/admin
+# accounts are provisioned by an existing admin (Task 14), never
+# self-signup, on a system holding minors' data. This is the flag that
+# actually gates new registration — [auth.email] enable_signup below gates
+# the whole email provider (sign-IN included), not just signup; setting
+# that one to false locked out every already-provisioned leader too.
+enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
@@ -217,10 +222,12 @@ web3 = 30
 # secret = ""
 
 [auth.email]
-# Allow/disallow new user signups via email to your project.
-# Off: leader/admin accounts are provisioned by an existing admin (Task 14),
-# never self-signup, on a system holding minors' data.
-enable_signup = false
+# NOT the signup toggle in practice — this gates the whole email provider,
+# sign-in included (confirmed empirically: setting this false returned
+# "email_provider_disabled" on a plain password sign-in for an existing
+# user). Must stay true or no leader can ever sign in. The actual
+# no-self-signup control is the top-level [auth] enable_signup above.
+enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
