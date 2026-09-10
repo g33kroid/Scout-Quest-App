@@ -18,7 +18,7 @@ jobs:
     # tooling: scripts/db-*.sh, plain psql/pg_prove.
     services:
       postgres:
-        image: supabase/postgres:15.14.1.170
+        image: supabase/postgres:17.6.1.170
         env:
           POSTGRES_PASSWORD: postgres
         ports:
@@ -32,6 +32,10 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
+        with:
+          # gitleaks diffs event.before..event.after — needs real history,
+          # not the default shallow (depth-1) clone.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -57,7 +61,7 @@ jobs:
       - name: Unit tests
         run: npm run test
 
-      # 4. migrations + pgTAP (empty suite passes)
+      # 4. migrations + pgTAP
       - name: DB migrate
         run: npm run db:migrate
       - name: pgTAP suite
