@@ -12,24 +12,21 @@ env:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    # Plain Postgres w/ pgtap baked in (the same image `supabase start` uses
-    # under the hood) — no Supabase CLI/Docker orchestration required. Keeps
-    # local dev (native Postgres, docs/runbook.md) and CI on the same schema
-    # tooling: scripts/db-*.sh, plain psql/pg_prove.
-    services:
-      postgres:
-        image: supabase/postgres:17.6.1.170
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+    # Full `supabase start` stack (Postgres 17 + GoTrue + PostgREST + Kong +
+    # Storage + Realtime), not just a bare Postgres service container — Task
+    # 03's auth flows need real GoTrue (TOTP enrollment/challenge, session
+    # minting), and the E2E suite exercises them for real. GH-hosted runners
+    # have Docker preinstalled, same as local dev's colima-backed Docker
+    # (docs/runbook.md). Migrations run automatically as part of
+    # `supabase start` — no separate db:migrate step needed here.
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # Supabase's well-known local-dev defaults — deterministic output of
+      # `supabase start` on every machine, not secrets. Same values as this
+      # project's own .env.local (docs/runbook.md).
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
     steps:
       - uses: actions/checkout@v4
 
@@ -45,6 +42,12 @@ jobs:
       - name: Install (npm ci)
         run: npm ci
 
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start Supabase (Postgres + Auth + PostgREST + Storage + Realtime)
+        run: supabase start
+
       # 2. typecheck, lint, format check
       - name: Typecheck
         run: npm run typecheck
@@ -57,9 +60,7 @@ jobs:
       - name: Unit tests
         run: npm run test
 
-      # 4. migrations + pgTAP
-      - name: DB migrate
-        run: npm run db:migrate
+      # 4. pgTAP (migrations already applied by `supabase start` above)
       - name: pgTAP suite
         run: npm run db:test
 
@@ -71,6 +72,8 @@ jobs:
         run: npm run build
 
       # 5. Playwright E2E against the local build
+      - name: Seed E2E fixtures
+        run: npm run seed:e2e
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
       - name: E2E tests

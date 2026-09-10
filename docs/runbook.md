@@ -87,18 +87,25 @@ npm run typecheck
 npm run lint
 npm run format          # npm run format:check in CI
 npm run test            # vitest
-npm run test:e2e        # playwright, needs `npm run build` or a dev server
+npm run test:e2e        # playwright, needs `npm run build`/dev server AND the
+                         # real `supabase start` stack — auth specs need GoTrue,
+                         # not just Postgres. Run `npm run seed:e2e` first
+                         # (needs SUPABASE_SERVICE_ROLE_KEY + DATABASE_URL set)
+npm run seed:e2e        # seeds one scout + one leader for the login E2E specs
 npm run db:migrate      # apply new migrations only
 npm run db:test         # pgTAP suite only (point DATABASE_URL at either environment)
 npm run db:reset        # drop, recreate, migrate, test — native Postgres only;
                          # use `npx supabase db reset` for the Supabase stack
 ```
 
-`supabase/config.toml` pins `major_version = 17` — CI's `supabase/postgres`
-service container and this project's eventual self-hosted Docker Compose
-deploy (Task 15) both track that. Native local Postgres stays on 15 (a
-Homebrew constraint, not a deliberate choice) — fine for schema/RLS
-iteration, just don't treat it as the version-accurate target.
+`supabase/config.toml` pins `major_version = 17` — CI runs the full
+`supabase start` stack (not just a bare Postgres container — Task 03's auth
+flows need real GoTrue), and this project's eventual self-hosted Docker
+Compose deploy (Task 15) both track that. Native local Postgres stays on 15
+(a Homebrew constraint, not a deliberate choice) — fine for schema/RLS
+iteration, just don't treat it as the version-accurate target, and remember
+E2E/auth work needs the real `supabase start` stack locally too, not native
+Postgres alone.
 
 ## Environment variables
 

@@ -249,3 +249,72 @@ composite value (`ERROR: subquery must return only one column`). Fixed by
 selecting the row itself (`select l from ledger l where ...`), not its
 expanded columns. Caught immediately by the first manual smoke test, before
 pgTAP.
+
+## Task 03 app layer — auth flows, route guards, and one schema fix
+
+Next.js server actions/route handlers (`lib/server/scout-auth.ts`,
+`lib/server/leader-auth.ts`), the route guard (`proxy.ts` — Next.js 16
+renamed Middleware to Proxy, same mechanism), and the login/TOTP-enrollment
+pages. Verified end-to-end against the real `supabase start` stack with
+Playwright (`e2e/scout-login.spec.ts`, `e2e/leader-login.spec.ts`) using
+`scripts/seed-e2e-fixtures.mjs` — not just unit-level.
+
+**One more schema fix, found while wiring the login flow, not by pgTAP**:
+`scout_login_record(p_person_id, p_ip, p_success)` required a non-null
+`person_id` — but an attempt against an _unknown_ nickname
+(`find_scout_for_login` returns nothing) never has one. That meant an
+enumeration attempt against made-up nicknames bypassed the per-IP rate
+limit entirely — the one axis that doesn't depend on knowing a real
+account. Fixed by making `p_person_id` nullable and skipping the
+person-side bookkeeping when it's null; the IP-side still applies
+(migration `20260910110000`, pgTAP `010_unknown_nickname_rate_limit.sql`).
+
+**Four real app-layer bugs**, each found by actually running the flow
+end-to-end against the real stack, not by typecheck/lint/build (all of
+which stayed green throughout):
+
+1. **`proxy.ts` redirected `/leader/enroll-totp` to itself, infinitely.**
+   The guard excluded `/leader/login` from the "must be aal2" check but not
+   `/leader/enroll-totp` or `/leader/verify-totp` — the two pages that
+   exist specifically to let an incomplete-TOTP leader finish setup. A
+   leader with no verified factor hit `/leader/enroll-totp`, the guard
+   re-ran, saw no verified factor, redirected to `/leader/enroll-totp`
+   again, forever (`Error: redirect count exceeded`, surfaced first as an
+   opaque `TypeError: fetch failed` in Next's dev log). Fixed by excluding
+   all three auth-flow pages from the guard — each already redirects
+   itself correctly at the Server Component level.
+2. **`[auth.email] enable_signup = false` disabled the entire email
+   provider, sign-in included, not just new self-registration.** Intent
+   was "leaders are admin-provisioned, never self-signup" — but this flag
+   (despite its doc comment) gates whether email/password auth works _at
+   all_; setting it false meant no already-provisioned leader could ever
+   sign in (`email_provider_disabled`, confirmed directly against GoTrue
+   via curl, independent of any app code). The actual "block new
+   registration" control is the top-level `[auth] enable_signup`. Fixed by
+   reverting the email-provider flag to `true` and moving the
+   no-self-signup intent to the top-level flag instead.
+3. **`enrollLeaderTotp()` failed on a second call with the same user.**
+   GoTrue only returns a TOTP factor's secret/QR once, at `enroll()` time,
+   and rejects re-enrolling with `"A factor with the friendly name \"\"
+already exists"` (the default friendly name is always the empty
+   string) — so a leader who reloads the enrollment page mid-setup (a
+   normal thing to do, not an edge case) would get permanently stuck,
+   unable to ever complete onboarding. Fixed by listing existing factors
+   and unenrolling any unverified TOTP factor before enrolling fresh, so a
+   reload just issues a new scannable code instead of erroring forever.
+4. **That fix didn't work on the first attempt**: `listFactors()`'s
+   type-keyed arrays (`.totp`, `.phone`, ...) only ever contain _verified_
+   factors — an unverified one shows up in `.all` and nowhere else.
+   Filtering `.totp` for `status === 'unverified'` (the first version of
+   the fix above) always finds nothing, so the stale factor was never
+   actually cleared and bug 3 kept recurring. Fixed by filtering `.all`
+   instead, narrowed on `factor_type === 'totp'`.
+
+**A structural fix in `playwright.config.ts`**: the login E2E specs mutate
+shared, IP-keyed rate-limit state (`scout_credentials`/`ip_rate_limits`).
+Running them under all 4 breakpoint projects in parallel (the existing
+default) meant the same login ran ~4x concurrently and reliably collided
+with itself — a real property of the rate limiter working correctly, not
+test flakiness to paper over. `docs/tasks/03-auth.md` only asks for one
+mobile-viewport E2E run anyway, so `*-login.spec.ts` is now excluded from
+every project but `360-baseline`.
