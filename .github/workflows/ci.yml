@@ -37,7 +37,7 @@ jobs:
           # not the default shallow (depth-1) clone.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
