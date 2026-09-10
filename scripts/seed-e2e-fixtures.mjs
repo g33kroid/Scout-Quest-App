@@ -50,6 +50,20 @@ async function main() {
     throw leaderUserError;
   }
 
+  const { data: scoringLeaderUser, error: scoringLeaderUserError } =
+    await admin.auth.admin.createUser({
+      id: FIXTURES.scoringLeaderId,
+      email: FIXTURES.scoringLeaderEmail,
+      password: FIXTURES.scoringLeaderPassword,
+      email_confirm: true,
+    });
+  if (
+    scoringLeaderUserError &&
+    !`${scoringLeaderUserError.message}`.includes("already been registered")
+  ) {
+    throw scoringLeaderUserError;
+  }
+
   const pinHash = await hash(FIXTURES.scoutPin, { algorithm: 2 });
 
   await pool.query("begin");
@@ -70,15 +84,35 @@ async function main() {
        on conflict (id) do nothing`,
       [FIXTURES.leaderId],
     );
+    // No unique constraint on (person_id, unit_id) — a scout can legitimately
+    // leave and rejoin a unit as distinct historical rows — so `on conflict`
+    // has no target here and silently does nothing, letting a re-run of this
+    // script insert a second active enrollment for the same person. That
+    // duplicate then trips find_scout_for_login()'s ambiguous-match guard
+    // (Task 03) and made scout login fail mysteriously. WHERE NOT EXISTS
+    // instead, guarding on "already has an active enrollment in this unit".
     await pool.query(
-      `insert into unit_enrollments (person_id, unit_id) values ($1, $2)
-       on conflict do nothing`,
+      `insert into unit_enrollments (person_id, unit_id)
+       select $1, $2 where not exists (
+         select 1 from unit_enrollments
+         where person_id = $1 and unit_id = $2 and ended_at is null
+       )`,
       [FIXTURES.scoutId, FIXTURES.unitId],
+    );
+    await pool.query(
+      `insert into people (id, display_name) values ($1, 'E2E Scoring Leader')
+       on conflict (id) do nothing`,
+      [FIXTURES.scoringLeaderId],
     );
     await pool.query(
       `insert into leaders (person_id, role, unit_id) values ($1, 'leader', $2)
        on conflict (person_id) do nothing`,
       [FIXTURES.leaderId, FIXTURES.unitId],
+    );
+    await pool.query(
+      `insert into leaders (person_id, role, unit_id) values ($1, 'leader', $2)
+       on conflict (person_id) do nothing`,
+      [FIXTURES.scoringLeaderId, FIXTURES.unitId],
     );
     await pool.query(
       `insert into scout_credentials (person_id, pin_hash) values ($1, $2)
@@ -92,6 +126,33 @@ async function main() {
        on conflict (code) do update set expires_at = excluded.expires_at`,
       [FIXTURES.unitId, FIXTURES.joinCode, FIXTURES.leaderId],
     );
+
+    // Task 05: a "today" session plus a 12-scout roster, for the leader
+    // scoring flow (docs/tasks/05-leader-scoring.md).
+    await pool.query(
+      `insert into sessions (id, unit_id, scheduled_at, kind)
+       values ($1, $2, now(), 'class')
+       on conflict (id) do update set scheduled_at = now()`,
+      [FIXTURES.sessionId, FIXTURES.unitId],
+    );
+    for (const [i, id] of FIXTURES.rosterScoutIds.entries()) {
+      await pool.query(
+        `insert into people (id, display_name) values ($1, $2)
+         on conflict (id) do update set display_name = excluded.display_name`,
+        [id, `Roster Scout ${String(i + 1).padStart(2, "0")}`],
+      );
+      await pool.query(
+        `insert into unit_enrollments (person_id, unit_id)
+         select $1, $2 where not exists (
+           select 1 from unit_enrollments
+           where person_id = $1 and unit_id = $2 and ended_at is null
+         )`,
+        [id, FIXTURES.unitId],
+      );
+    }
+    // Clear any awards from a previous run so the roster starts unscored.
+    await pool.query(`delete from ledger where session_id = $1`, [FIXTURES.sessionId]);
+
     await pool.query("commit");
   } catch (err) {
     await pool.query("rollback");
@@ -103,6 +164,7 @@ async function main() {
   console.log("E2E fixtures seeded:", {
     scoutUserId: scoutUser?.user?.id ?? FIXTURES.scoutId,
     leaderUserId: leaderUser?.user?.id ?? FIXTURES.leaderId,
+    scoringLeaderUserId: scoringLeaderUser?.user?.id ?? FIXTURES.scoringLeaderId,
   });
 }
 

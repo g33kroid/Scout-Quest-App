@@ -91,7 +91,8 @@ npm run test:e2e        # playwright, needs `npm run build`/dev server AND the
                          # real `supabase start` stack — auth specs need GoTrue,
                          # not just Postgres. Run `npm run seed:e2e` first
                          # (needs SUPABASE_SERVICE_ROLE_KEY + DATABASE_URL set)
-npm run seed:e2e        # seeds one scout + one leader for the login E2E specs
+npm run seed:e2e        # seeds a scout, 2 leaders, a 12-scout roster + today's
+                         # session, for the login/scoring E2E specs
 npm run db:migrate      # apply new migrations only
 npm run db:test         # pgTAP suite only (point DATABASE_URL at either environment)
 npm run db:reset        # drop, recreate, migrate, test — native Postgres only;
