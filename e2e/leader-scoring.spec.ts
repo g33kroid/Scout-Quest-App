@@ -112,3 +112,74 @@ test("a double-tap on confirm does not double-award", async ({ page }) => {
     await pool.end();
   }
 });
+
+// docs/tasks/06-attendance.md: marking on the same roster screen, present/
+// absent needing no extra input, excused requiring a category first.
+test("marking present records attendance immediately, no extra input", async ({
+  page,
+}) => {
+  await fullyAuthenticateLeader(page);
+
+  const group = page.getByRole("group", { name: "Attendance for Roster Scout 04" });
+  await group.getByRole("button", { name: "present", exact: true }).click();
+  await expect(
+    group.getByRole("button", { name: "present", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  const rosterScout04 = FIXTURES.rosterScoutIds[3];
+  const pool = new pg.Pool({
+    connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+  });
+  try {
+    // aria-pressed flips optimistically, before the server action's round
+    // trip resolves — poll rather than assume the write has landed yet.
+    await expect
+      .poll(async () => {
+        const { rows } = await pool.query(
+          "select status from attendance where person_id = $1 order by created_at desc limit 1",
+          [rosterScout04],
+        );
+        return rows[0]?.status;
+      })
+      .toBe("present");
+  } finally {
+    await pool.end();
+  }
+});
+
+test("excusing a scout requires a category before it can be saved", async ({ page }) => {
+  await fullyAuthenticateLeader(page);
+
+  const group = page.getByRole("group", { name: "Attendance for Roster Scout 05" });
+  await group.getByRole("button", { name: "excused", exact: true }).click();
+
+  const saveButton = page.getByRole("button", { name: "Save excuse" });
+  await expect(saveButton).toBeDisabled();
+  await expect(page.getByText(/do not enter medical details/i)).toBeVisible();
+
+  await page.getByLabel("Excuse category").selectOption("none_given");
+  await expect(saveButton).toBeEnabled();
+  await saveButton.click();
+
+  await expect(
+    group.getByRole("button", { name: "excused", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  const rosterScout05 = FIXTURES.rosterScoutIds[4];
+  const pool = new pg.Pool({
+    connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+  });
+  try {
+    await expect
+      .poll(async () => {
+        const { rows } = await pool.query(
+          "select status, excuse_category from attendance where person_id = $1 order by created_at desc limit 1",
+          [rosterScout05],
+        );
+        return rows[0];
+      })
+      .toMatchObject({ status: "excused", excuse_category: "none_given" });
+  } finally {
+    await pool.end();
+  }
+});

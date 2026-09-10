@@ -13,10 +13,23 @@ export interface SessionSummary {
   unitId: string;
 }
 
+export type AttendanceStatus = "present" | "absent" | "excused";
+
 export interface RosterScout {
   personId: string;
   displayName: string;
   awardedToday: boolean;
+  // null: nobody has recorded anything for this session yet. Distinct from
+  // 'absent' — a session that hasn't closed isn't a no-show yet
+  // (docs/tasks/06-attendance.md); the DB only defaults to absent once the
+  // session is in the past (see attendance_resolved).
+  attendanceStatus: AttendanceStatus | null;
+}
+
+export interface AttentionScout {
+  personId: string;
+  displayName: string;
+  totalAbsences: number;
 }
 
 // Uses the leader's own authenticated client — RLS (Task 02) already scopes
@@ -84,6 +97,16 @@ export async function getRosterForSession(sessionId: string): Promise<RosterScou
     .eq("reason", "award");
   const awardedIds = new Set((awarded ?? []).map((row) => row.person_id));
 
+  // attendance_current (Task 06): the latest row per (person, session) —
+  // append-only, so this is never a plain table select.
+  const { data: attendance } = await supabase
+    .from("attendance_current")
+    .select("person_id, status")
+    .eq("session_id", sessionId);
+  const statusByPerson = new Map(
+    (attendance ?? []).map((row) => [row.person_id, row.status as AttendanceStatus]),
+  );
+
   return (enrollments ?? [])
     .map((row) => {
       const person = Array.isArray(row.people) ? row.people[0] : row.people;
@@ -91,8 +114,44 @@ export async function getRosterForSession(sessionId: string): Promise<RosterScou
         personId: row.person_id,
         displayName: person?.display_name ?? "",
         awardedToday: awardedIds.has(row.person_id),
+        attendanceStatus: statusByPerson.get(row.person_id) ?? null,
       };
     })
     .filter((scout) => scout.displayName)
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+// The pastoral signal (docs/tasks/06-attendance.md): scouts with 2+ total
+// absences, regardless of reason — attendance_rates.needs_attention already
+// does the counting, RLS already scopes it to this leader's own unit.
+export async function getAttentionNeededScouts(
+  personIds: string[],
+): Promise<AttentionScout[]> {
+  if (personIds.length === 0) return [];
+  const supabase = await createServerSupabaseClient();
+
+  const { data: rates } = await supabase
+    .from("attendance_rates")
+    .select("person_id, total_absences, needs_attention")
+    .in("person_id", personIds)
+    .eq("needs_attention", true);
+  if (!rates || rates.length === 0) return [];
+
+  const { data: people } = await supabase
+    .from("people")
+    .select("id, display_name")
+    .in(
+      "id",
+      rates.map((r) => r.person_id),
+    );
+  const nameById = new Map((people ?? []).map((p) => [p.id, p.display_name]));
+
+  return rates
+    .map((r) => ({
+      personId: r.person_id,
+      displayName: nameById.get(r.person_id) ?? "",
+      totalAbsences: r.total_absences,
+    }))
+    .filter((s) => s.displayName)
+    .sort((a, b) => b.totalAbsences - a.totalAbsences);
 }
