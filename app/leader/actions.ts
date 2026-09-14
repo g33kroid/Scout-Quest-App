@@ -73,6 +73,11 @@ const attendanceSchema = z.object({
   status: z.enum(["present", "absent", "excused"]),
   excuseCategory: excuseCategorySchema.nullable().optional(),
   note: z.string().max(280).nullable().optional(),
+  // Written at creation time by the caller (docs/tasks/08-offline-sync.md),
+  // not minted here — a mutation queued offline must carry the same key
+  // through every retry, and only the caller (or the outbox replaying it)
+  // knows whether this is a first attempt or a resend.
+  idempotencyKey: z.string().min(1),
 });
 
 export interface RecordAttendanceResult {
@@ -83,13 +88,17 @@ export interface RecordAttendanceResult {
 // attendance is append-only (Task 06) — this is always an INSERT, never an
 // update. RLS (attendance_insert_staff) is the actual authorization check;
 // recorded_by is set here from the caller's own session rather than trusted
-// from client input.
+// from client input. `upsert` + `ignoreDuplicates` (rather than plain
+// `insert`) is what makes this safe for the offline outbox to replay
+// (Task 08): a resend with the same idempotency_key is a no-op, not a
+// second row.
 export async function recordAttendanceAction(input: {
   sessionId: string;
   personId: string;
   status: string;
   excuseCategory?: string | null;
   note?: string | null;
+  idempotencyKey: string;
 }): Promise<RecordAttendanceResult> {
   const parsed = attendanceSchema.safeParse(input);
   if (!parsed.success) {
@@ -110,14 +119,19 @@ export async function recordAttendanceAction(input: {
     return { ok: false, error: "Not signed in." };
   }
 
-  const { error } = await supabase.from("attendance").insert({
-    person_id: parsed.data.personId,
-    session_id: parsed.data.sessionId,
-    status: parsed.data.status,
-    excuse_category: parsed.data.status === "excused" ? parsed.data.excuseCategory : null,
-    note: parsed.data.note || null,
-    recorded_by: user.id,
-  });
+  const { error } = await supabase.from("attendance").upsert(
+    {
+      person_id: parsed.data.personId,
+      session_id: parsed.data.sessionId,
+      status: parsed.data.status,
+      excuse_category:
+        parsed.data.status === "excused" ? parsed.data.excuseCategory : null,
+      note: parsed.data.note || null,
+      recorded_by: user.id,
+      idempotency_key: parsed.data.idempotencyKey,
+    },
+    { onConflict: "idempotency_key", ignoreDuplicates: true },
+  );
 
   if (error) {
     return { ok: false, error: "Could not save that. Try again." };
