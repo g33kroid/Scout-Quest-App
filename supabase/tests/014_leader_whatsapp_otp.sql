@@ -16,12 +16,12 @@ select throws_ok(
   null, null, 'a non-E.164 number is rejected'
 );
 select lives_ok(
-  $$ select public.leader_set_whatsapp_number('+971501234567') $$,
+  $$ select public.leader_set_whatsapp_number('+15550100003') $$,
   'a valid E.164 number is accepted'
 );
 select is(
   (select public.leader_get_own_whatsapp_number()),
-  '+971501234567',
+  '+15550100003',
   'a leader can read back their own number'
 );
 reset role;
