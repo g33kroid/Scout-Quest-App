@@ -20,3 +20,10 @@ export function getSupabaseUrl(): string {
 export function getSupabaseAnonKey(): string {
   return requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
 }
+
+// Signs the leader_otp_verified cookie (lib/server/otp-session.ts). Reuses
+// the JWT secret rather than adding a new required env var — both are
+// server-only, HMAC-signing values nobody but this app ever verifies.
+export function getOtpSessionSecret(): string {
+  return requireEnv("SUPABASE_JWT_SECRET");
+}

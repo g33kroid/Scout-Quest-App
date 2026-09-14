@@ -27,4 +27,10 @@ export const FIXTURES = {
   scoringLeaderId: "9e000000-0000-0000-0000-000000000202",
   scoringLeaderEmail: "e2e-scoring-leader@scouts.invalid",
   scoringLeaderPassword: "another-correct-horse-battery-2026",
+  // Second factor is a WhatsApp-delivered OTP (replaced authenticator-app
+  // TOTP after Task 03 shipped) — distinct per leader so
+  // lib/server/whatsapp-sender.ts's capture map never mixes them up when
+  // both specs run in the same worker.
+  leaderWhatsAppNumber: "+971500000001",
+  scoringLeaderWhatsAppNumber: "+971500000002",
 };
