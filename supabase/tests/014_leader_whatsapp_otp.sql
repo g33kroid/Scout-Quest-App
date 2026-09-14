@@ -12,7 +12,7 @@ set local role authenticated;
 select set_config('request.jwt.claims', json_build_object('sub', 'c0000000-0000-0000-0000-000000000201')::text, true);
 
 select throws_ok(
-  $$ select public.leader_set_whatsapp_number('0501234567') $$,
+  $$ select public.leader_set_whatsapp_number('not-a-phone-number') $$,
   null, null, 'a non-E.164 number is rejected'
 );
 select lives_ok(
