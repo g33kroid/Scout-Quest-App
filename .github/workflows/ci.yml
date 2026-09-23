@@ -33,7 +33,7 @@ jobs:
       # real WhatsApp session (lib/server/whatsapp-sender.ts).
       E2E_TEST_MODE: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # gitleaks diffs event.before..event.after — needs real history,
           # not the default shallow (depth-1) clone.
