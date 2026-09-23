@@ -27,4 +27,21 @@ export const FIXTURES = {
   scoringLeaderId: "9e000000-0000-0000-0000-000000000202",
   scoringLeaderEmail: "e2e-scoring-leader@scouts.invalid",
   scoringLeaderPassword: "another-correct-horse-battery-2026",
+  // Task 09/10: a published, available quest the scout can see on their
+  // journal, plus a locked one gated on a prerequisite the scout hasn't
+  // completed — enough to exercise both "available" and "locked" rendering
+  // without seeding a full board.
+  availableQuestId: "9e000000-0000-0000-0000-000000000801",
+  availableQuestTitle: "E2E Available Quest",
+  prereqQuestId: "9e000000-0000-0000-0000-000000000802",
+  prereqQuestTitle: "E2E Prerequisite Quest",
+  lockedQuestId: "9e000000-0000-0000-0000-000000000803",
+  lockedQuestTitle: "E2E Locked Quest",
+  // Its own leader identity (same reasoning as scoringLeaderId above) — a
+  // fresh-TOTP-enrollment flow can only happen once per leader per DB, and
+  // this spec needs that first-enrollment leg same as leader-login.spec.ts
+  // does for `leaderId`.
+  questAuthoringLeaderId: "9e000000-0000-0000-0000-000000000203",
+  questAuthoringLeaderEmail: "e2e-quest-leader@scouts.invalid",
+  questAuthoringLeaderPassword: "yet-another-correct-horse-2026",
 };
