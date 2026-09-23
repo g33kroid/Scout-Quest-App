@@ -78,6 +78,7 @@ test("a new quest is created as an unpublished draft, then can be published once
   await expect(page.getByText(/Published — visible to scouts/)).toBeVisible();
 
   await page.goto("/leader/quests");
-  await expect(page.getByText("E2E Authored Quest")).toBeVisible();
-  await expect(page.getByText(/published/)).toBeVisible();
+  const authoredQuestLink = page.getByRole("link", { name: /E2E Authored Quest/ });
+  await expect(authoredQuestLink).toBeVisible();
+  await expect(authoredQuestLink).toContainText("published");
 });
