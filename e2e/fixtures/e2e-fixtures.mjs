@@ -27,4 +27,13 @@ export const FIXTURES = {
   scoringLeaderId: "9e000000-0000-0000-0000-000000000202",
   scoringLeaderEmail: "e2e-scoring-leader@scouts.invalid",
   scoringLeaderPassword: "another-correct-horse-battery-2026",
+  // Second factor is a WhatsApp-delivered OTP (replaced authenticator-app
+  // TOTP after Task 03 shipped) — distinct per leader so the capture table
+  // (lib/server/whatsapp-sender.ts) never mixes them up when both specs
+  // run in the same worker. 555-0100 is the reserved fictional US number
+  // range — not just invented, structurally guaranteed non-real, unlike a
+  // made-up UAE-shaped number (scripts/check-no-real-data.sh bans those
+  // outright, real or not, since they're indistinguishable from real ones).
+  leaderWhatsAppNumber: "+15550100001",
+  scoringLeaderWhatsAppNumber: "+15550100002",
 };

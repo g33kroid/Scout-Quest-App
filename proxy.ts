@@ -1,23 +1,28 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createProxySupabaseClient } from "@/lib/server/supabase-proxy";
+import {
+  OTP_VERIFIED_COOKIE_NAME,
+  isOtpVerifiedCookieValid,
+} from "@/lib/server/otp-session";
 
 // Route guard: the single place that decides who can reach /leader/* and
 // /scout/*. docs/tasks/03-auth.md non-negotiables this enforces:
 // - a leader must never authenticate through the scout path, and a scout
 //   session must never satisfy a leader route guard (403, not a redirect
 //   loop — a scout IS authenticated, just not authorised for this route)
-// - a leader without TOTP enrolled/challenged this session cannot reach
-//   any leader route (redirected to finish that step, not locked out with
-//   no path forward)
-// Leader pages that are themselves the escape valve for an incomplete TOTP
-// state — each already guards/redirects itself at the Server Component
-// level (see lib/server/leader-auth.ts's getLeaderSessionState()). Guarding
-// them here too would redirect /leader/enroll-totp to /leader/enroll-totp
-// when the leader has no TOTP factor yet — an infinite loop, not a guard.
+// - a leader without a WhatsApp-verified OTP this session cannot reach any
+//   leader route (redirected to finish that step, not locked out with no
+//   path forward) — the second factor is a WhatsApp-delivered OTP, not
+//   authenticator-app TOTP (see the PR that introduced this comment for why).
+// Leader pages that are themselves the escape valve for an incomplete
+// setup/verify state — each already guards/redirects itself at the Server
+// Component level (see lib/server/leader-auth.ts's getLeaderSessionState()).
+// Guarding them here too would redirect /leader/setup-whatsapp to itself
+// when the leader has no number on file yet — an infinite loop, not a guard.
 const LEADER_AUTH_FLOW_PATHS = [
   "/leader/login",
-  "/leader/enroll-totp",
-  "/leader/verify-totp",
+  "/leader/setup-whatsapp",
+  "/leader/verify-otp",
 ];
 
 export async function proxy(request: NextRequest) {
@@ -55,15 +60,14 @@ async function guardLeaderRoute(request: NextRequest) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 
-  const { data: factorsData } = await supabase.auth.mfa.listFactors();
-  const verifiedTotp = factorsData?.totp?.find((f) => f.status === "verified");
-  if (!verifiedTotp) {
-    return NextResponse.redirect(new URL("/leader/enroll-totp", request.url));
+  const { data: whatsappNumber } = await supabase.rpc("leader_get_own_whatsapp_number");
+  if (!whatsappNumber) {
+    return NextResponse.redirect(new URL("/leader/setup-whatsapp", request.url));
   }
 
-  const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (aalData?.currentLevel !== "aal2") {
-    return NextResponse.redirect(new URL("/leader/verify-totp", request.url));
+  const otpCookie = request.cookies.get(OTP_VERIFIED_COOKIE_NAME)?.value;
+  if (!(await isOtpVerifiedCookieValid(otpCookie, user.id))) {
+    return NextResponse.redirect(new URL("/leader/verify-otp", request.url));
   }
 
   return getResponse();

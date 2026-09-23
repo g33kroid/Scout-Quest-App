@@ -37,13 +37,13 @@ export async function leaderLoginAction(
     return { error: "Incorrect email or password." };
   }
 
-  // Password verified — route to whatever TOTP step (or none) comes next.
+  // Password verified — route to whatever OTP step (or none) comes next.
   const state = await getLeaderSessionState();
-  if (state.status === "needs_enrollment") {
-    redirect("/leader/enroll-totp");
+  if (state.status === "needs_whatsapp_setup") {
+    redirect("/leader/setup-whatsapp");
   }
-  if (state.status === "needs_mfa_challenge") {
-    redirect("/leader/verify-totp");
+  if (state.status === "needs_otp_challenge") {
+    redirect("/leader/verify-otp");
   }
   redirect("/leader");
 }

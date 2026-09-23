@@ -1,13 +1,20 @@
 import "server-only";
+import { headers, cookies } from "next/headers";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import { createServerSupabaseClient } from "@/lib/server/supabase-server";
+import { generateOtpCode, hashOtpCode, verifyOtpCode } from "@/lib/server/otp";
+import { getWhatsAppSender } from "@/lib/server/whatsapp-sender";
+import {
+  OTP_VERIFIED_COOKIE_NAME,
+  createOtpVerifiedCookie,
+  isOtpVerifiedCookieValid,
+} from "@/lib/server/otp-session";
 
 export type LeaderLoginResult =
   { ok: false; reason: "locked" | "invalid_credentials" } | { ok: true };
 
-// Step 1: email + password only. Supabase Auth owns the credential itself
-// (docs/tasks/03-auth.md — leaders use Supabase Auth directly); we only own
-// the per-IP lockout and the audit trail on top of it.
+// Step 1: email + password only. Supabase Auth owns the credential itself;
+// we only own the per-IP lockout and the audit trail on top of it.
 export async function loginLeaderPassword(
   email: string,
   password: string,
@@ -33,16 +40,18 @@ export async function loginLeaderPassword(
 
 export type LeaderSessionState =
   | { status: "unauthenticated" }
-  | { status: "needs_enrollment" }
-  | { status: "needs_mfa_challenge"; factorId: string }
+  | { status: "needs_whatsapp_setup" }
+  | { status: "needs_otp_challenge"; personId: string }
   | { status: "ready" };
 
 // The single source of truth for "can this session reach a leader route
-// right now" — used by both the login page (what to show next) and the
-// route guard (what to block). docs/tasks/03-auth.md: "a leader without
-// TOTP enrolled cannot reach any leader route" and "mandatory TOTP" —
-// mandatory means unenrolled leaders get routed to enrollment, not locked
-// out forever with no path forward.
+// right now" — used by the login page, the OTP-setup/verify pages, and
+// proxy.ts (the route guard). Second factor is a WhatsApp-delivered OTP,
+// not authenticator-app TOTP — see the PR that introduced this file for
+// why (a deliberate post-Task-03 decision, not part of the original plan).
+// "Mandatory" means an unenrolled leader gets routed to setup, not locked
+// out forever with no path forward — same shape as the TOTP flow it
+// replaces.
 export async function getLeaderSessionState(): Promise<LeaderSessionState> {
   const supabase = await createServerSupabaseClient();
 
@@ -53,63 +62,133 @@ export async function getLeaderSessionState(): Promise<LeaderSessionState> {
     return { status: "unauthenticated" };
   }
 
-  const { data: factorsData } = await supabase.auth.mfa.listFactors();
-  const verifiedTotp = factorsData?.totp?.find((f) => f.status === "verified");
-
-  if (!verifiedTotp) {
-    return { status: "needs_enrollment" };
+  const { data: whatsappNumber } = await supabase.rpc("leader_get_own_whatsapp_number");
+  if (!whatsappNumber) {
+    return { status: "needs_whatsapp_setup" };
   }
 
-  const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (aalData?.currentLevel === "aal2") {
+  const cookieStore = await cookies();
+  const otpCookie = cookieStore.get(OTP_VERIFIED_COOKIE_NAME)?.value;
+  if (await isOtpVerifiedCookieValid(otpCookie, user.id)) {
     return { status: "ready" };
   }
 
-  return { status: "needs_mfa_challenge", factorId: verifiedTotp.id };
+  return { status: "needs_otp_challenge", personId: user.id };
 }
 
-// GoTrue only returns a factor's QR/secret once, at enroll() time, and
-// rejects a second enroll() call outright ("factor with the friendly name
-// already exists" — the default friendly name is always the empty string).
-// A leader reloading this page mid-setup is a real, expected case, not an
-// edge case — clear out any stale unverified factor first so enroll() can
-// succeed again and the leader gets a fresh, scannable QR code.
-export async function enrollLeaderTotp() {
-  const supabase = await createServerSupabaseClient();
+const E164_PATTERN = /^\+[1-9][0-9]{7,14}$/;
 
-  // listFactors()'s type-keyed arrays (.totp, .phone, ...) only ever contain
-  // VERIFIED factors — an unverified one shows up in .all and nowhere else.
-  // Filtering .totp here (as an earlier version of this function did) finds
-  // nothing, never actually cleans anything up, and this function keeps
-  // failing with the same name-conflict error forever.
-  const { data: factorsData } = await supabase.auth.mfa.listFactors();
-  const pending =
-    factorsData?.all?.filter(
-      (f) => f.factor_type === "totp" && f.status === "unverified",
-    ) ?? [];
-  for (const factor of pending) {
-    await supabase.auth.mfa.unenroll({ factorId: factor.id });
+export type SetWhatsAppNumberResult = { ok: true } | { ok: false; error: string };
+
+export async function setLeaderWhatsAppNumber(
+  whatsappNumber: string,
+): Promise<SetWhatsAppNumberResult> {
+  if (!E164_PATTERN.test(whatsappNumber)) {
+    return {
+      ok: false,
+      error: "Enter a number in international format, e.g. +9715XXXXXXXX.",
+    };
   }
 
-  return supabase.auth.mfa.enroll({ factorType: "totp" });
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("leader_set_whatsapp_number", {
+    p_whatsapp_number: whatsappNumber,
+  });
+  if (error) {
+    return { ok: false, error: "Could not save that number. Try again." };
+  }
+  return { ok: true };
 }
 
-// Confirms enrollment (first verify after enroll()) and post-enrollment
-// challenges (every later login) use the same call — Supabase Auth doesn't
-// distinguish them.
-export async function verifyLeaderTotp(factorId: string, code: string) {
+export type SendOtpResult = { ok: true } | { ok: false; error: string };
+
+// Generates a fresh code, stores its hash, and sends it — called when the
+// leader lands on the OTP-challenge step, and again if they tap "resend".
+export async function sendLeaderOtpChallenge(personId: string): Promise<SendOtpResult> {
   const supabase = await createServerSupabaseClient();
-  const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({
-    factorId,
-  });
-  if (challengeError || !challenge) {
-    return { ok: false as const };
+
+  const { data: whatsappNumber } = await supabase.rpc("leader_get_own_whatsapp_number");
+  if (!whatsappNumber) {
+    return { ok: false, error: "No WhatsApp number on file." };
   }
 
-  const { error: verifyError } = await supabase.auth.mfa.verify({
-    factorId,
-    challengeId: challenge.id,
-    code,
+  const code = generateOtpCode();
+  const codeHash = await hashOtpCode(code);
+
+  const { error } = await supabase.rpc("leader_generate_otp_challenge", {
+    p_person_id: personId,
+    p_code_hash: codeHash,
   });
-  return { ok: !verifyError };
+  if (error) {
+    return { ok: false, error: "Could not start verification. Try again." };
+  }
+
+  const sendResult = await getWhatsAppSender().sendMessage(
+    whatsappNumber,
+    `Your Scout Quest verification code is ${code}. It expires in 5 minutes.`,
+  );
+  if (!sendResult.ok) {
+    return { ok: false, error: "Could not send the code. Try again." };
+  }
+  return { ok: true };
+}
+
+export type VerifyOtpResult =
+  { ok: true } | { ok: false; reason: "locked" | "invalid_code" | "no_active_challenge" };
+
+export async function verifyLeaderOtp(
+  personId: string,
+  code: string,
+  ip: string,
+): Promise<VerifyOtpResult> {
+  const supabase = await createServerSupabaseClient();
+
+  const { data: isLocked } = await supabase.rpc("leader_otp_is_locked", {
+    p_person_id: personId,
+    p_ip: ip,
+  });
+  if (isLocked) {
+    return { ok: false, reason: "locked" };
+  }
+
+  const { data: challenges } = await supabase.rpc("leader_get_active_otp_challenge", {
+    p_person_id: personId,
+  });
+  const challenge = challenges?.[0] as { id: string; code_hash: string } | undefined;
+  if (!challenge) {
+    return { ok: false, reason: "no_active_challenge" };
+  }
+
+  const matches = await verifyOtpCode(challenge.code_hash, code);
+
+  await supabase.rpc("leader_otp_verify_record", {
+    p_challenge_id: challenge.id,
+    p_ip: ip,
+    p_success: matches,
+  });
+
+  if (!matches) {
+    return { ok: false, reason: "invalid_code" };
+  }
+
+  const cookieStore = await cookies();
+  const { value, maxAgeSeconds } = await createOtpVerifiedCookie(personId);
+  cookieStore.set(OTP_VERIFIED_COOKIE_NAME, value, {
+    httpOnly: true,
+    // Browsers refuse a Secure cookie over plain HTTP — true in prod
+    // (always HTTPS, Task 15), false in dev/CI/LAN testing (always HTTP).
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: maxAgeSeconds,
+    path: "/",
+  });
+
+  return { ok: true };
+}
+
+// Reused by leaderLoginAction so it doesn't need to duplicate header
+// parsing for the client IP.
+export async function getRequestIp(): Promise<string> {
+  const requestHeaders = await headers();
+  return requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "0.0.0.0";
 }
