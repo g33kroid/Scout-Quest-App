@@ -178,9 +178,10 @@ async function main() {
     await pool.query(`delete from ledger where session_id = $1`, [FIXTURES.sessionId]);
 
     // Task 09/10: one published+available quest and one published+locked
-    // quest (gated on a third, unpublished prerequisite quest — its own
-    // translations don't matter, only its id and title need to exist for
-    // the "locked" section to name it).
+    // quest, gated on a third quest that's also published (quest_translations
+    // RLS only lets a scout read a translation row for a *published* quest —
+    // an unpublished prerequisite's title would be invisible to them, so the
+    // "locked" section could never actually name it).
     await pool.query(
       `insert into quests (id, unit_id, tier, kind, created_by) values
          ($1, $2, 'minor', 'solo', $3),
@@ -220,8 +221,8 @@ async function main() {
     );
     await pool.query(
       `update quests set published_at = now()
-       where id in ($1, $2) and published_at is null`,
-      [FIXTURES.availableQuestId, FIXTURES.lockedQuestId],
+       where id in ($1, $2, $3) and published_at is null`,
+      [FIXTURES.availableQuestId, FIXTURES.lockedQuestId, FIXTURES.prereqQuestId],
     );
 
     await pool.query("commit");
