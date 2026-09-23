@@ -1,48 +1,48 @@
 import { test, expect, type Page } from "@playwright/test";
-import { TOTP, Secret } from "otpauth";
 import pg from "pg";
 import { FIXTURES } from "./fixtures/e2e-fixtures.mjs";
 
 // docs/tasks/05-leader-scoring.md: the 15-second screen. Requires
 // scripts/seed-e2e-fixtures.mjs to have been run against a live
-// `supabase start` stack first (seeds a "today" session + 12-scout roster).
+// `supabase start` stack first (seeds a "today" session + 12-scout roster),
+// and E2E_TEST_MODE=true so app/api/test-support/last-whatsapp-otp works
+// (second factor is a WhatsApp-delivered OTP — see e2e/leader-login.spec.ts).
 test.use({ viewport: { width: 375, height: 812 } });
 
-// Serial, one worker: TOTP enrollment can only happen once per fresh DB —
-// every test after the first reuses the same cached secret to answer the
-// ordinary verify-totp challenge instead. fullyParallel (playwright.config)
-// would otherwise run these in separate worker processes with no shared
-// module state.
+// Serial, one worker: WhatsApp setup only happens once per fresh DB (the
+// number, once set, persists) — later tests skip straight to verify-otp.
+// fullyParallel (playwright.config) would otherwise run these in separate
+// worker processes, each hitting setup fresh and racing on the same
+// person's leaders.whatsapp_number row.
 test.describe.configure({ mode: "serial" });
 
-// Enrollment only happens once per fresh DB — the first test in this file
-// to authenticate captures the secret here, so later tests (same leader,
-// same factor, no reset in between) can compute a fresh code for the
-// ordinary verify-totp challenge instead of needing to re-enroll.
-let cachedTotpSecret: string | null = null;
+async function readLastOtpCode(page: Page, whatsappNumber: string): Promise<string> {
+  const response = await page.request.get(
+    `/api/test-support/last-whatsapp-otp?to=${encodeURIComponent(whatsappNumber)}`,
+  );
+  const body = (await response.json()) as { code: string | null };
+  if (!body.code) {
+    throw new Error(`no captured WhatsApp OTP for ${whatsappNumber}`);
+  }
+  return body.code;
+}
 
 async function fullyAuthenticateLeader(page: Page) {
   await page.goto("/leader/login");
   await page.getByLabel("Email").fill(FIXTURES.scoringLeaderEmail);
   await page.getByLabel("Password").fill(FIXTURES.scoringLeaderPassword);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL(/\/leader\/(enroll-totp|verify-totp)$/, { timeout: 10000 });
+  await page.waitForURL(/\/leader\/(setup-whatsapp|verify-otp)$/, { timeout: 10000 });
 
-  // Only enroll-totp ever shows the secret — don't block waiting for an
-  // element that verify-totp never renders.
-  const secretLocator = page.locator("p.font-mono");
-  if (await secretLocator.count()) {
-    cachedTotpSecret = (await secretLocator.textContent())?.trim() ?? null;
-  }
-  if (!cachedTotpSecret) {
-    throw new Error(
-      "no known TOTP secret for this leader — run this spec against a freshly reset DB",
-    );
+  if (page.url().includes("/setup-whatsapp")) {
+    await page.getByLabel("WhatsApp number").fill(FIXTURES.scoringLeaderWhatsAppNumber);
+    await page.getByRole("button", { name: "Send code" }).click();
+    await page.waitForURL(/\/leader\/verify-otp$/, { timeout: 10000 });
   }
 
-  const totp = new TOTP({ secret: Secret.fromBase32(cachedTotpSecret) });
-  await page.getByLabel("6-digit code").fill(totp.generate());
-  await page.getByRole("button", { name: /Confirm|Verify/ }).click();
+  const code = await readLastOtpCode(page, FIXTURES.scoringLeaderWhatsAppNumber);
+  await page.getByLabel("6-digit code").fill(code);
+  await page.getByRole("button", { name: "Confirm" }).click();
   await expect(page).toHaveURL(/\/leader\?session=/);
 }
 

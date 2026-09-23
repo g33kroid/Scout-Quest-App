@@ -27,6 +27,15 @@ export const FIXTURES = {
   scoringLeaderId: "9e000000-0000-0000-0000-000000000202",
   scoringLeaderEmail: "e2e-scoring-leader@scouts.invalid",
   scoringLeaderPassword: "another-correct-horse-battery-2026",
+  // Second factor is a WhatsApp-delivered OTP (replaced authenticator-app
+  // TOTP after Task 03 shipped) — distinct per leader so the capture table
+  // (lib/server/whatsapp-sender.ts) never mixes them up when both specs
+  // run in the same worker. 555-0100 is the reserved fictional US number
+  // range — not just invented, structurally guaranteed non-real, unlike a
+  // made-up UAE-shaped number (scripts/check-no-real-data.sh bans those
+  // outright, real or not, since they're indistinguishable from real ones).
+  leaderWhatsAppNumber: "+15550100001",
+  scoringLeaderWhatsAppNumber: "+15550100002",
   // Task 09/10: a published, available quest the scout can see on their
   // journal, plus a locked one gated on a prerequisite the scout hasn't
   // completed — enough to exercise both "available" and "locked" rendering
@@ -38,10 +47,11 @@ export const FIXTURES = {
   lockedQuestId: "9e000000-0000-0000-0000-000000000803",
   lockedQuestTitle: "E2E Locked Quest",
   // Its own leader identity (same reasoning as scoringLeaderId above) — a
-  // fresh-TOTP-enrollment flow can only happen once per leader per DB, and
-  // this spec needs that first-enrollment leg same as leader-login.spec.ts
-  // does for `leaderId`.
+  // fresh WhatsApp-setup flow can only happen once per leader per DB, and
+  // this spec needs that first-setup leg same as leader-login.spec.ts does
+  // for `leaderId`.
   questAuthoringLeaderId: "9e000000-0000-0000-0000-000000000203",
   questAuthoringLeaderEmail: "e2e-quest-leader@scouts.invalid",
   questAuthoringLeaderPassword: "yet-another-correct-horse-2026",
+  questAuthoringLeaderWhatsAppNumber: "+15550100003",
 };
