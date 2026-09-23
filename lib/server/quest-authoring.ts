@@ -1,17 +1,9 @@
 import "server-only";
 import { createServerSupabaseClient } from "@/lib/server/supabase-server";
+import type { QuestKind, QuestOption, QuestTier } from "@/lib/quest-shared";
 
-export type QuestTier = "minor" | "standard" | "major" | "epic";
-export type QuestKind = "solo" | "group";
-
-// Fixed tiers (rule 2) — the DB's own ledger check is the real enforcement;
-// this is only ever used to label a radio button, never sent as a raw number.
-export const TIER_POINTS: Record<QuestTier, number> = {
-  minor: 10,
-  standard: 25,
-  major: 50,
-  epic: 100,
-};
+export { TIER_POINTS } from "@/lib/quest-shared";
+export type { QuestKind, QuestOption, QuestTier } from "@/lib/quest-shared";
 
 export interface QuestTranslation {
   locale: "en" | "ar";
@@ -28,11 +20,6 @@ export interface AuthoredQuest {
   expiresAt: string | null;
   translations: QuestTranslation[];
   prereqIds: string[];
-}
-
-export interface QuestOption {
-  id: string;
-  title: string;
 }
 
 export interface LeaderIdentity {

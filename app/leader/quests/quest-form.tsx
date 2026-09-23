@@ -13,7 +13,7 @@ import {
   type QuestKind,
   type QuestOption,
   type QuestTier,
-} from "@/lib/server/quest-authoring";
+} from "@/lib/quest-shared";
 
 interface QuestFormProps {
   mode: "create" | "edit";
