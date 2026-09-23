@@ -1,37 +1,45 @@
 import { test, expect, type Page } from "@playwright/test";
-import { TOTP, Secret } from "otpauth";
 import { FIXTURES } from "./fixtures/e2e-fixtures.mjs";
 
 // docs/tasks/09-quests-board.md: leader authoring — tier is a fixed choice
 // (no free-text point field), and publishing is refused until both locales
 // exist. Serial + its own leader identity for the same reason as
-// leader-scoring.spec.ts: fresh TOTP enrollment only happens once per leader
-// per DB, so every test after the first reuses the cached secret.
+// leader-scoring.spec.ts: WhatsApp setup only happens once per leader per
+// DB, so every test after the first skips straight to verify-otp. Requires
+// E2E_TEST_MODE=true so app/api/test-support/last-whatsapp-otp works (see
+// e2e/leader-login.spec.ts).
 test.use({ viewport: { width: 375, height: 812 } });
 test.describe.configure({ mode: "serial" });
 
-let cachedTotpSecret: string | null = null;
+async function readLastOtpCode(page: Page, whatsappNumber: string): Promise<string> {
+  const response = await page.request.get(
+    `/api/test-support/last-whatsapp-otp?to=${encodeURIComponent(whatsappNumber)}`,
+  );
+  const body = (await response.json()) as { code: string | null };
+  if (!body.code) {
+    throw new Error(`no captured WhatsApp OTP for ${whatsappNumber}`);
+  }
+  return body.code;
+}
 
 async function authenticateQuestLeader(page: Page) {
   await page.goto("/leader/login");
   await page.getByLabel("Email").fill(FIXTURES.questAuthoringLeaderEmail);
   await page.getByLabel("Password").fill(FIXTURES.questAuthoringLeaderPassword);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL(/\/leader\/(enroll-totp|verify-totp)$/, { timeout: 10000 });
+  await page.waitForURL(/\/leader\/(setup-whatsapp|verify-otp)$/, { timeout: 10000 });
 
-  const secretLocator = page.locator("p.font-mono");
-  if (await secretLocator.count()) {
-    cachedTotpSecret = (await secretLocator.textContent())?.trim() ?? null;
-  }
-  if (!cachedTotpSecret) {
-    throw new Error(
-      "no known TOTP secret for this leader — run this spec against a freshly reset DB",
-    );
+  if (page.url().includes("/setup-whatsapp")) {
+    await page
+      .getByLabel("WhatsApp number")
+      .fill(FIXTURES.questAuthoringLeaderWhatsAppNumber);
+    await page.getByRole("button", { name: "Send code" }).click();
+    await page.waitForURL(/\/leader\/verify-otp$/, { timeout: 10000 });
   }
 
-  const totp = new TOTP({ secret: Secret.fromBase32(cachedTotpSecret) });
-  await page.getByLabel("6-digit code").fill(totp.generate());
-  await page.getByRole("button", { name: /Confirm|Verify/ }).click();
+  const code = await readLastOtpCode(page, FIXTURES.questAuthoringLeaderWhatsAppNumber);
+  await page.getByLabel("6-digit code").fill(code);
+  await page.getByRole("button", { name: "Confirm" }).click();
   await page.waitForURL(/\/leader\?session=/);
 }
 
