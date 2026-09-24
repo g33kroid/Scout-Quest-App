@@ -15,7 +15,7 @@ test("scout signs in with join code, nickname, and PIN", async ({ page }) => {
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/scout$/);
-  await expect(page.getByText("Signed in.")).toBeVisible();
+  await expect(page.getByText("Streak")).toBeVisible();
 });
 
 test("wrong PIN shows an error and does not sign in", async ({ page }) => {

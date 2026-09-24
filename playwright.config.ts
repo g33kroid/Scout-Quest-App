@@ -45,17 +45,32 @@ export default defineConfig({
     {
       name: "414-large-phone",
       use: { viewport: { width: 414, height: 896 } },
-      testIgnore: ["**/*-login.spec.ts", "**/leader-scoring.spec.ts"],
+      testIgnore: [
+        "**/*-login.spec.ts",
+        "**/leader-scoring.spec.ts",
+        "**/leader-quest-authoring.spec.ts",
+        "**/scout-journal.spec.ts",
+      ],
     },
     {
       name: "768-tablet",
       use: { viewport: { width: 768, height: 1024 } },
-      testIgnore: ["**/*-login.spec.ts", "**/leader-scoring.spec.ts"],
+      testIgnore: [
+        "**/*-login.spec.ts",
+        "**/leader-scoring.spec.ts",
+        "**/leader-quest-authoring.spec.ts",
+        "**/scout-journal.spec.ts",
+      ],
     },
     {
       name: "1024-leader-laptop",
       use: { ...devices["Desktop Chrome"], viewport: { width: 1024, height: 800 } },
-      testIgnore: ["**/*-login.spec.ts", "**/leader-scoring.spec.ts"],
+      testIgnore: [
+        "**/*-login.spec.ts",
+        "**/leader-scoring.spec.ts",
+        "**/leader-quest-authoring.spec.ts",
+        "**/scout-journal.spec.ts",
+      ],
     },
   ],
 });

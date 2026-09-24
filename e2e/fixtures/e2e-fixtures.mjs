@@ -36,4 +36,22 @@ export const FIXTURES = {
   // outright, real or not, since they're indistinguishable from real ones).
   leaderWhatsAppNumber: "+15550100001",
   scoringLeaderWhatsAppNumber: "+15550100002",
+  // Task 09/10: a published, available quest the scout can see on their
+  // journal, plus a locked one gated on a prerequisite the scout hasn't
+  // completed — enough to exercise both "available" and "locked" rendering
+  // without seeding a full board.
+  availableQuestId: "9e000000-0000-0000-0000-000000000801",
+  availableQuestTitle: "E2E Available Quest",
+  prereqQuestId: "9e000000-0000-0000-0000-000000000802",
+  prereqQuestTitle: "E2E Prerequisite Quest",
+  lockedQuestId: "9e000000-0000-0000-0000-000000000803",
+  lockedQuestTitle: "E2E Locked Quest",
+  // Its own leader identity (same reasoning as scoringLeaderId above) — a
+  // fresh WhatsApp-setup flow can only happen once per leader per DB, and
+  // this spec needs that first-setup leg same as leader-login.spec.ts does
+  // for `leaderId`.
+  questAuthoringLeaderId: "9e000000-0000-0000-0000-000000000203",
+  questAuthoringLeaderEmail: "e2e-quest-leader@scouts.invalid",
+  questAuthoringLeaderPassword: "yet-another-correct-horse-2026",
+  questAuthoringLeaderWhatsAppNumber: "+15550100003",
 };

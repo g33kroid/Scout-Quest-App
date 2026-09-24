@@ -64,6 +64,20 @@ async function main() {
     throw scoringLeaderUserError;
   }
 
+  const { data: questAuthoringLeaderUser, error: questAuthoringLeaderUserError } =
+    await admin.auth.admin.createUser({
+      id: FIXTURES.questAuthoringLeaderId,
+      email: FIXTURES.questAuthoringLeaderEmail,
+      password: FIXTURES.questAuthoringLeaderPassword,
+      email_confirm: true,
+    });
+  if (
+    questAuthoringLeaderUserError &&
+    !`${questAuthoringLeaderUserError.message}`.includes("already been registered")
+  ) {
+    throw questAuthoringLeaderUserError;
+  }
+
   const pinHash = await hash(FIXTURES.scoutPin, { algorithm: 2 });
 
   await pool.query("begin");
@@ -105,9 +119,19 @@ async function main() {
       [FIXTURES.scoringLeaderId],
     );
     await pool.query(
+      `insert into people (id, display_name) values ($1, 'E2E Quest Leader')
+       on conflict (id) do nothing`,
+      [FIXTURES.questAuthoringLeaderId],
+    );
+    await pool.query(
       `insert into leaders (person_id, role, unit_id) values ($1, 'leader', $2)
        on conflict (person_id) do nothing`,
       [FIXTURES.leaderId, FIXTURES.unitId],
+    );
+    await pool.query(
+      `insert into leaders (person_id, role, unit_id) values ($1, 'leader', $2)
+       on conflict (person_id) do nothing`,
+      [FIXTURES.questAuthoringLeaderId, FIXTURES.unitId],
     );
     await pool.query(
       `insert into leaders (person_id, role, unit_id) values ($1, 'leader', $2)
@@ -153,6 +177,54 @@ async function main() {
     // Clear any awards from a previous run so the roster starts unscored.
     await pool.query(`delete from ledger where session_id = $1`, [FIXTURES.sessionId]);
 
+    // Task 09/10: one published+available quest and one published+locked
+    // quest, gated on a third quest that's also published (quest_translations
+    // RLS only lets a scout read a translation row for a *published* quest —
+    // an unpublished prerequisite's title would be invisible to them, so the
+    // "locked" section could never actually name it).
+    await pool.query(
+      `insert into quests (id, unit_id, tier, kind, created_by) values
+         ($1, $2, 'minor', 'solo', $3),
+         ($4, $2, 'minor', 'solo', $3),
+         ($5, $2, 'minor', 'solo', $3)
+       on conflict (id) do nothing`,
+      [
+        FIXTURES.availableQuestId,
+        FIXTURES.unitId,
+        FIXTURES.leaderId,
+        FIXTURES.prereqQuestId,
+        FIXTURES.lockedQuestId,
+      ],
+    );
+    await pool.query(
+      `insert into quest_translations (quest_id, locale, title, description) values
+         ($1, 'en', $2, 'E2E fixture description.'),
+         ($1, 'ar', $2, 'وصف تجريبي.'),
+         ($3, 'en', $4, 'E2E fixture description.'),
+         ($3, 'ar', $4, 'وصف تجريبي.'),
+         ($5, 'en', $6, 'E2E fixture description.'),
+         ($5, 'ar', $6, 'وصف تجريبي.')
+       on conflict (quest_id, locale) do update set title = excluded.title`,
+      [
+        FIXTURES.availableQuestId,
+        FIXTURES.availableQuestTitle,
+        FIXTURES.prereqQuestId,
+        FIXTURES.prereqQuestTitle,
+        FIXTURES.lockedQuestId,
+        FIXTURES.lockedQuestTitle,
+      ],
+    );
+    await pool.query(
+      `insert into quest_prereqs (quest_id, requires_quest_id) values ($1, $2)
+       on conflict (quest_id, requires_quest_id) do nothing`,
+      [FIXTURES.lockedQuestId, FIXTURES.prereqQuestId],
+    );
+    await pool.query(
+      `update quests set published_at = now()
+       where id in ($1, $2, $3) and published_at is null`,
+      [FIXTURES.availableQuestId, FIXTURES.lockedQuestId, FIXTURES.prereqQuestId],
+    );
+
     await pool.query("commit");
   } catch (err) {
     await pool.query("rollback");
@@ -165,6 +237,8 @@ async function main() {
     scoutUserId: scoutUser?.user?.id ?? FIXTURES.scoutId,
     leaderUserId: leaderUser?.user?.id ?? FIXTURES.leaderId,
     scoringLeaderUserId: scoringLeaderUser?.user?.id ?? FIXTURES.scoringLeaderId,
+    questAuthoringLeaderUserId:
+      questAuthoringLeaderUser?.user?.id ?? FIXTURES.questAuthoringLeaderId,
   });
 }
 
