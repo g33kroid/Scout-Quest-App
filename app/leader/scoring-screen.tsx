@@ -148,7 +148,12 @@ export function ScoringScreen({
     setRoster((prev) =>
       prev.map((s) => (s.personId === personId ? { ...s, attendanceStatus: status } : s)),
     );
-    const result = await recordAttendanceAction({ sessionId, personId, status });
+    const result = await recordAttendanceAction({
+      sessionId,
+      personId,
+      status,
+      idempotencyKey: crypto.randomUUID(),
+    });
     if (!result.ok) {
       setRoster((prev) =>
         prev.map((s) =>
@@ -174,6 +179,7 @@ export function ScoringScreen({
       status: "excused",
       excuseCategory,
       note: note.trim() || null,
+      idempotencyKey: crypto.randomUUID(),
     });
     if (!result.ok) {
       setRoster((prev) =>
