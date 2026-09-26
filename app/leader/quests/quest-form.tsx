@@ -324,11 +324,18 @@ export function QuestForm({
           </div>
         </fieldset>
 
+        {/*
+          These field labels name which language's content you're typing —
+          "Title"/"العنوان" always stay in that block's own language,
+          independent of the leader's own UI locale (t(locale, ...) would
+          make both blocks say "Title" whenever the UI is in English —
+          confirmed the hard way, an E2E strict-mode collision).
+        */}
         <LocaleFieldset
-          legend={t(locale, "leaderQuests.english")}
-          titleLabel={t(locale, "leaderQuests.titleLabel")}
-          flavourLabel={t(locale, "leaderQuests.flavourLabel")}
-          descriptionLabel={t(locale, "leaderQuests.descriptionLabel")}
+          legend="English"
+          titleLabel="Title"
+          flavourLabel="Flavour (optional)"
+          descriptionLabel="Description"
           title={titleEn}
           onTitleChange={setTitleEn}
           flavour={flavourEn}
@@ -341,10 +348,10 @@ export function QuestForm({
 
         <LocaleFieldset
           dir="rtl"
-          legend={t(locale, "leaderQuests.arabic")}
-          titleLabel={t(locale, "leaderQuests.titleLabel")}
-          flavourLabel={t(locale, "leaderQuests.flavourLabel")}
-          descriptionLabel={t(locale, "leaderQuests.descriptionLabel")}
+          legend="العربية"
+          titleLabel="العنوان"
+          flavourLabel="وصف قصير (اختياري)"
+          descriptionLabel="الوصف"
           title={titleAr}
           onTitleChange={setTitleAr}
           flavour={flavourAr}
