@@ -27,3 +27,12 @@ export function getSupabaseAnonKey(): string {
 export function getOtpSessionSecret(): string {
   return requireEnv("SUPABASE_JWT_SECRET");
 }
+
+// Not requireEnv: unlike the vars above, the app runs fine with this unset
+// (E2E_TEST_MODE's stub translator never calls it, and a real deploy without
+// it just means "Translate" degrades to a friendly error) — lib/server/
+// translator.ts is what actually treats a missing key as its own failure
+// mode, at call time, not at import/boot time.
+export function getLlmApiKey(): string {
+  return process.env.LLM_API_KEY ?? "";
+}

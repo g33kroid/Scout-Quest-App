@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createServerSupabaseClient } from "@/lib/server/supabase-server";
 import { getLeaderIdentity } from "@/lib/server/quest-authoring";
 import { friendlyDbError } from "@/lib/db-error-messages";
+import { getTranslator } from "@/lib/server/translator";
 
 const uuidShape = z
   .string()
@@ -139,6 +140,58 @@ export async function setQuestPublishedAction(
     .eq("id", parsed.data.questId);
   if (error) return { ok: false, error: friendlyDbError(error.message) };
   return { ok: true, questId: parsed.data.questId };
+}
+
+const translateSchema = z.object({
+  sourceLocale: z.enum(["en", "ar"]),
+  targetLocale: z.enum(["en", "ar"]),
+  title: z.string().min(1).max(120),
+  flavour: z.string().max(280).nullable().optional(),
+  description: z.string().min(1).max(2000),
+});
+
+export interface TranslateQuestResult {
+  ok: boolean;
+  title?: string;
+  flavour?: string | null;
+  description?: string;
+  error?: string;
+}
+
+// Produces an editable draft only — never writes to quest_translations
+// itself. The leader's own Save/Create click is what persists it (and can
+// persist an edited version, not the machine draft — docs/tasks/11-bilingual.md).
+export async function translateQuestAction(
+  input: z.infer<typeof translateSchema>,
+): Promise<TranslateQuestResult> {
+  const parsed = translateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid request." };
+
+  const leader = await getLeaderIdentity();
+  if (!leader) return { ok: false, error: "Not signed in as a leader." };
+
+  const supabase = await createServerSupabaseClient();
+  const { data: allowed } = await supabase.rpc("try_consume_translate_quota");
+  if (!allowed) {
+    return { ok: false, error: "Too many translation requests — try again in a bit." };
+  }
+
+  const result = await getTranslator().translateQuest({
+    sourceLocale: parsed.data.sourceLocale,
+    targetLocale: parsed.data.targetLocale,
+    title: parsed.data.title,
+    flavour: parsed.data.flavour ?? null,
+    description: parsed.data.description,
+  });
+  if (!result.ok) {
+    return { ok: false, error: result.error ?? "Could not translate that. Try again." };
+  }
+  return {
+    ok: true,
+    title: result.title,
+    flavour: result.flavour,
+    description: result.description,
+  };
 }
 
 const prereqsSchema = z.object({
