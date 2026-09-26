@@ -7,6 +7,12 @@ select plan(4);
 
 \ir support/journal_fixtures.sql
 
+-- journal_fixtures.sql only puts Scout One in patrol BA1 — add Scout
+-- Teammate too, so this scenario actually has two contributing members to
+-- sum (the bug this function fixes only shows up with more than one).
+insert into public.patrol_memberships (person_id, patrol_id) values
+  ('ba000000-0000-0000-0000-000000000102', 'ba000000-0000-0000-0000-000000000801');
+
 -- Both Scout One (10 + 25) and Scout Teammate (25, the shared group award)
 -- contribute to patrol BA1 — the real total is 60, not the 35 that querying
 -- patrol_totals directly as Scout One returns (that view sums only what

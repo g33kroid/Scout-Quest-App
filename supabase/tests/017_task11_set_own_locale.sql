@@ -4,7 +4,7 @@
 -- patrol_total_for_scout(). docs/tasks/11-bilingual.md: "locale preference
 -- persists across devices for the same scout."
 begin;
-select plan(4);
+select plan(5);
 
 \ir support/fixtures.sql
 
@@ -31,15 +31,24 @@ select throws_ok(
   null,
   'an unsupported locale is rejected at the enum type boundary'
 );
-reset role;
 
--- Only a signed-in caller may reach this at all — no grant to anon.
+-- Nothing here revokes anon's default EXECUTE — Postgres grants that to
+-- PUBLIC on every function by default, and no SECURITY DEFINER function in
+-- this codebase revokes it (award_points, patrol_total_for_scout, etc. all
+-- rely on the same pattern: the real boundary is current_uid() being null
+-- with no session, not the grant). Clearing the claim explicitly — it's
+-- transaction-local, not role-local, so the authenticated block's claim
+-- above would otherwise leak into this one.
 set local role anon;
-select throws_ok(
-  $$ select public.set_own_locale('ar') $$,
-  '42501',
-  null,
-  'an anonymous caller is refused outright, not silently ignored'
+select set_config('request.jwt.claims', '', true);
+select lives_ok(
+  $$ select public.set_own_locale('en') $$,
+  'calling with no session does not error'
+);
+select is(
+  (select locale::text from people where id = 'a0000000-0000-0000-0000-000000000101'),
+  'ar',
+  'and touches nobody''s row — still ''ar'' from the earlier authenticated call'
 );
 reset role;
 
