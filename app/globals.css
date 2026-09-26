@@ -24,3 +24,10 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* docs/tasks/11-bilingual.md: Arabic font stack, applied wherever content
+   is RTL-directioned (whether that's the whole page shell or just a
+   content fieldset embedded in an otherwise-English screen). */
+[dir="rtl"] {
+  font-family: var(--font-arabic), Arial, Helvetica, sans-serif;
+}
