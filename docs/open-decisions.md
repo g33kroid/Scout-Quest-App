@@ -71,7 +71,13 @@ enrollment?
 
 ## Smaller, but decide before the affected task
 
-**D15.** Numeral convention — Western or Arabic-Indic? _(Task 11)_
+**D15.** ~~Numeral convention — Western or Arabic-Indic?~~ **Resolved
+2026-09-26: Western digits (0-9) everywhere, both locales.** Matches a
+scout's phone keypad and everyday UAE digital UI; avoids bidi/mixed-content
+edge cases (a score next to a Latin name). Applies to every score, date, and
+standings figure — `Intl.NumberFormat`/`toLocaleString` calls must pin
+`numberingSystem: "latn"` explicitly rather than trust the `ar` locale's
+default (which is Arabic-Indic in most runtimes). _(Task 11)_
 **D16.** Patrols self-selected or leader-assigned? _(Task 14)_
 **D17.** Scout moving units mid-season — what happens to their patrol history?
 _(Task 14)_

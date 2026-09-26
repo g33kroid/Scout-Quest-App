@@ -1,42 +1,54 @@
 import Link from "next/link";
-import { getQuestsForLeaderUnit, TIER_POINTS } from "@/lib/server/quest-authoring";
+import { getQuestsForLeaderUnit } from "@/lib/server/quest-authoring";
+import { getLocale } from "@/lib/server/locale";
+import { t } from "@/lib/i18n/messages";
+import { formatNumber } from "@/lib/i18n/format";
+import { TIER_MESSAGE_KEY, TIER_POINTS, KIND_MESSAGE_KEY } from "@/lib/quest-shared";
 
 // docs/tasks/09-quests-board.md: leader authoring list. Server Component —
 // the list arrives rendered, no client fetch (docs/tasks/00b-cross-cutting-ui.md).
 export default async function LeaderQuestsPage() {
-  const quests = await getQuestsForLeaderUnit();
+  const [quests, locale] = await Promise.all([getQuestsForLeaderUnit(), getLocale()]);
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col gap-4 px-6 py-8">
+    <main className="mx-auto flex w-full max-w-sm flex-col gap-4 px-6 pb-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Quests</h1>
+        <h1 className="text-xl font-semibold">{t(locale, "leaderQuests.title")}</h1>
         <Link
           href="/leader/quests/new"
           className="flex min-h-12 items-center rounded-lg bg-blue-600 px-4 text-base font-semibold text-white"
         >
-          New quest
+          {t(locale, "leaderQuests.newQuest")}
         </Link>
       </div>
 
       {quests.length === 0 ? (
-        <p className="text-sm text-zinc-500">No quests yet.</p>
+        <p className="text-sm text-zinc-500">{t(locale, "leaderQuests.noQuests")}</p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {quests.map((q) => {
-            const en = q.translations.find((t) => t.locale === "en");
+          {quests.map((quest) => {
+            const enTranslation = quest.translations.find((tr) => tr.locale === "en");
             return (
-              <li key={q.id}>
+              <li key={quest.id}>
                 <Link
-                  href={`/leader/quests/${q.id}/edit`}
+                  href={`/leader/quests/${quest.id}/edit`}
                   className="flex min-h-12 flex-col justify-center rounded-lg border border-zinc-300 px-4 py-2"
                 >
                   <span className="text-base font-medium">
-                    {en?.title ?? "(untitled draft)"}
+                    {enTranslation?.title ?? t(locale, "leaderQuests.untitledDraft")}
                   </span>
                   <span className="text-sm text-zinc-500">
-                    {q.tier} · {TIER_POINTS[q.tier]} pts · {q.kind}
-                    {" · "}
-                    {q.publishedAt ? "published" : "draft"}
+                    {t(locale, "leaderQuests.questSummary", {
+                      tier: t(locale, TIER_MESSAGE_KEY[quest.tier]),
+                      points: formatNumber(TIER_POINTS[quest.tier], locale),
+                      kind: t(locale, KIND_MESSAGE_KEY[quest.kind]),
+                      status: t(
+                        locale,
+                        quest.publishedAt
+                          ? "leaderQuests.statusPublished"
+                          : "leaderQuests.statusDraft",
+                      ),
+                    })}
                   </span>
                 </Link>
               </li>
