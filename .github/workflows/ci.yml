@@ -77,6 +77,10 @@ jobs:
       - name: Real-data gate (UAE phone pattern)
         run: bash scripts/check-no-real-data.sh
 
+      # docs/tasks/11-bilingual.md: logical CSS properties only, RTL depends on it
+      - name: RTL gate (no physical left/right margins)
+        run: bash scripts/check-no-physical-margins.sh
+
       - name: Build
         run: npm run build
 

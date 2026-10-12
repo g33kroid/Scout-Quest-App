@@ -6,17 +6,23 @@ import {
   createQuestAction,
   setQuestPrereqsAction,
   setQuestPublishedAction,
+  translateQuestAction,
   updateQuestAction,
 } from "./actions";
 import {
+  KIND_MESSAGE_KEY,
+  TIER_MESSAGE_KEY,
   TIER_POINTS,
   type QuestKind,
   type QuestOption,
   type QuestTier,
 } from "@/lib/quest-shared";
+import { t, type Locale } from "@/lib/i18n/messages";
+import { formatNumber } from "@/lib/i18n/format";
 
 interface QuestFormProps {
   mode: "create" | "edit";
+  locale: Locale;
   questId?: string;
   initial?: {
     tier: QuestTier;
@@ -49,6 +55,7 @@ interface LocaleFieldsetProps {
   description: string;
   onDescriptionChange: (value: string) => void;
   required?: boolean;
+  translateAction?: { label: string; onClick: () => void; disabled: boolean };
 }
 
 // English and Arabic authoring fields are the same three inputs twice —
@@ -66,10 +73,23 @@ function LocaleFieldset({
   description,
   onDescriptionChange,
   required,
+  translateAction,
 }: LocaleFieldsetProps) {
   return (
     <fieldset className="flex flex-col gap-3" dir={dir}>
-      <legend className="text-sm font-medium">{legend}</legend>
+      <div className="flex items-center justify-between gap-3">
+        <legend className="text-sm font-medium">{legend}</legend>
+        {translateAction && (
+          <button
+            type="button"
+            onClick={translateAction.onClick}
+            disabled={translateAction.disabled}
+            className="text-sm text-blue-600 disabled:opacity-50"
+          >
+            {translateAction.label}
+          </button>
+        )}
+      </div>
       <label className="flex flex-col gap-1">
         <span className="text-sm">{titleLabel}</span>
         <input
@@ -106,6 +126,7 @@ function LocaleFieldset({
 
 export function QuestForm({
   mode,
+  locale,
   questId,
   initial,
   prereqOptions = [],
@@ -113,6 +134,7 @@ export function QuestForm({
 }: QuestFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [isTranslating, setIsTranslating] = useState<"en" | "ar" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tier, setTier] = useState<QuestTier>(initial?.tier ?? "minor");
   const [kind, setKind] = useState<QuestKind>(initial?.kind ?? "solo");
@@ -145,7 +167,7 @@ export function QuestForm({
           : await updateQuestAction({ ...payload, questId: questId! });
 
       if (!result.ok || !result.questId) {
-        setError(result.error ?? "Could not save that. Try again.");
+        setError(result.error ?? t(locale, "leaderQuests.genericSaveError"));
         return;
       }
       if (mode === "create") {
@@ -165,7 +187,7 @@ export function QuestForm({
         requiresQuestIds: prereqIds,
       });
       if (!result.ok) {
-        setError(result.error ?? "Could not save prerequisites.");
+        setError(result.error ?? t(locale, "leaderQuests.genericSaveError"));
         return;
       }
       router.refresh();
@@ -178,11 +200,70 @@ export function QuestForm({
     startTransition(async () => {
       const result = await setQuestPublishedAction({ questId, publish: !isPublished });
       if (!result.ok) {
-        setError(result.error ?? "Could not update publish state.");
+        setError(result.error ?? t(locale, "leaderQuests.genericSaveError"));
         return;
       }
       router.refresh();
     });
+  }
+
+  function buildTranslateAction(target: "en" | "ar") {
+    const sourceFilled =
+      target === "ar"
+        ? Boolean(titleEn && descriptionEn)
+        : Boolean(titleAr && descriptionAr);
+    return {
+      label:
+        isTranslating === target
+          ? t(locale, "leaderQuests.translating")
+          : t(
+              locale,
+              target === "ar"
+                ? "leaderQuests.translateToArabic"
+                : "leaderQuests.translateToEnglish",
+            ),
+      onClick: () => handleTranslate(target),
+      disabled: isTranslating !== null || !sourceFilled,
+    };
+  }
+
+  // Fills the *other* language as an editable draft — never saved until the
+  // leader's own Create/Save click (docs/tasks/11-bilingual.md).
+  async function handleTranslate(target: "en" | "ar") {
+    setError(null);
+    setIsTranslating(target);
+    const result = await translateQuestAction(
+      target === "ar"
+        ? {
+            sourceLocale: "en",
+            targetLocale: "ar",
+            title: titleEn,
+            flavour: flavourEn || null,
+            description: descriptionEn,
+          }
+        : {
+            sourceLocale: "ar",
+            targetLocale: "en",
+            title: titleAr,
+            flavour: flavourAr || null,
+            description: descriptionAr,
+          },
+    );
+    setIsTranslating(null);
+
+    if (!result.ok) {
+      setError(result.error ?? t(locale, "leaderQuests.translateError"));
+      return;
+    }
+    if (target === "ar") {
+      setTitleAr(result.title ?? "");
+      setFlavourAr(result.flavour ?? "");
+      setDescriptionAr(result.description ?? "");
+    } else {
+      setTitleEn(result.title ?? "");
+      setFlavourEn(result.flavour ?? "");
+      setDescriptionEn(result.description ?? "");
+    }
   }
 
   return (
@@ -195,47 +276,61 @@ export function QuestForm({
         )}
 
         <fieldset className="flex flex-col gap-2">
-          <legend className="text-sm font-medium">Tier</legend>
+          <legend className="text-sm font-medium">
+            {t(locale, "leaderQuests.tier")}
+          </legend>
           <div className="grid grid-cols-2 gap-2">
-            {TIERS.map((t) => (
+            {TIERS.map((tierOption) => (
               <button
-                key={t}
+                key={tierOption}
                 type="button"
-                onClick={() => setTier(t)}
-                aria-pressed={tier === t}
+                onClick={() => setTier(tierOption)}
+                aria-pressed={tier === tierOption}
                 className={`min-h-12 rounded-lg border px-4 text-start text-base capitalize ${
-                  tier === t
+                  tier === tierOption
                     ? "border-blue-600 bg-blue-50 font-semibold"
                     : "border-zinc-300"
                 }`}
               >
-                {t} · {TIER_POINTS[t]} pts
+                {t(locale, "leaderQuests.tierOption", {
+                  tier: t(locale, TIER_MESSAGE_KEY[tierOption]),
+                  points: formatNumber(TIER_POINTS[tierOption], locale),
+                })}
               </button>
             ))}
           </div>
         </fieldset>
 
         <fieldset className="flex flex-col gap-2">
-          <legend className="text-sm font-medium">Kind</legend>
+          <legend className="text-sm font-medium">
+            {t(locale, "leaderQuests.kind")}
+          </legend>
           <div className="grid grid-cols-2 gap-2">
-            {KINDS.map((k) => (
+            {KINDS.map((kindOption) => (
               <button
-                key={k}
+                key={kindOption}
                 type="button"
-                onClick={() => setKind(k)}
-                aria-pressed={kind === k}
+                onClick={() => setKind(kindOption)}
+                aria-pressed={kind === kindOption}
                 className={`min-h-12 rounded-lg border px-4 text-start text-base capitalize ${
-                  kind === k
+                  kind === kindOption
                     ? "border-blue-600 bg-blue-50 font-semibold"
                     : "border-zinc-300"
                 }`}
               >
-                {k}
+                {t(locale, KIND_MESSAGE_KEY[kindOption])}
               </button>
             ))}
           </div>
         </fieldset>
 
+        {/*
+          These field labels name which language's content you're typing —
+          "Title"/"العنوان" always stay in that block's own language,
+          independent of the leader's own UI locale (t(locale, ...) would
+          make both blocks say "Title" whenever the UI is in English —
+          confirmed the hard way, an E2E strict-mode collision).
+        */}
         <LocaleFieldset
           legend="English"
           titleLabel="Title"
@@ -248,6 +343,7 @@ export function QuestForm({
           description={descriptionEn}
           onDescriptionChange={setDescriptionEn}
           required
+          translateAction={buildTranslateAction("en")}
         />
 
         <LocaleFieldset
@@ -262,23 +358,31 @@ export function QuestForm({
           onFlavourChange={setFlavourAr}
           description={descriptionAr}
           onDescriptionChange={setDescriptionAr}
+          translateAction={buildTranslateAction("ar")}
         />
+        <p className="text-sm text-zinc-500">{t(locale, "leaderQuests.translateHint")}</p>
 
         <button
           type="submit"
           disabled={isPending}
           className="min-h-12 rounded-lg bg-blue-600 px-4 text-base font-semibold text-white disabled:opacity-50"
         >
-          {mode === "create" ? "Create quest" : "Save changes"}
+          {mode === "create"
+            ? t(locale, "leaderQuests.createQuest")
+            : t(locale, "leaderQuests.saveChanges")}
         </button>
       </form>
 
       {mode === "edit" && questId && (
         <>
           <section className="flex flex-col gap-2 border-t border-zinc-200 pt-6">
-            <h2 className="text-sm font-medium">Prerequisites</h2>
+            <h2 className="text-sm font-medium">
+              {t(locale, "leaderQuests.prerequisites")}
+            </h2>
             {prereqOptions.length === 0 ? (
-              <p className="text-sm text-zinc-500">No other quests in this unit yet.</p>
+              <p className="text-sm text-zinc-500">
+                {t(locale, "leaderQuests.noOtherQuests")}
+              </p>
             ) : (
               <div className="flex flex-col gap-2">
                 {prereqOptions.map((opt) => (
@@ -309,16 +413,18 @@ export function QuestForm({
               disabled={isPending}
               className="min-h-12 rounded-lg border border-zinc-300 px-4 text-base disabled:opacity-50"
             >
-              Save prerequisites
+              {t(locale, "leaderQuests.savePrereqs")}
             </button>
           </section>
 
           <section className="flex flex-col gap-2 border-t border-zinc-200 pt-6">
-            <h2 className="text-sm font-medium">Publishing</h2>
+            <h2 className="text-sm font-medium">
+              {t(locale, "leaderQuests.publishing")}
+            </h2>
             <p className="text-sm text-zinc-500">
               {isPublished
-                ? "Published — visible to scouts in this unit."
-                : "Draft — not yet visible to scouts. Requires both English and Arabic content."}
+                ? t(locale, "leaderQuests.publishedHint")
+                : t(locale, "leaderQuests.draftHint")}
             </p>
             <button
               type="button"
@@ -326,7 +432,9 @@ export function QuestForm({
               disabled={isPending}
               className="min-h-12 rounded-lg bg-zinc-900 px-4 text-base font-semibold text-white disabled:opacity-50"
             >
-              {isPublished ? "Unpublish" : "Publish"}
+              {isPublished
+                ? t(locale, "leaderQuests.unpublish")
+                : t(locale, "leaderQuests.publish")}
             </button>
           </section>
         </>

@@ -82,3 +82,69 @@ test("a new quest is created as an unpublished draft, then can be published once
   await expect(authoredQuestLink).toBeVisible();
   await expect(authoredQuestLink).toContainText("published");
 });
+
+// docs/tasks/11-bilingual.md: "the translate action produces an editable
+// draft, not a saved record" / "editing the machine draft and saving
+// persists the edit, not the original." E2E_TEST_MODE routes this through
+// StubTranslator (lib/server/translator.ts) — deterministic, no real model
+// call, prefixes with "[ar]"/"[en]" so the draft is distinguishable from
+// hand-typed content.
+test("translating fills the other language as an editable draft, and an edited draft is what gets saved", async ({
+  page,
+}) => {
+  await authenticateQuestLeader(page);
+  await page.goto("/leader/quests/new");
+  await page.getByLabel("Title", { exact: true }).fill("E2E Translate Source");
+  await page.getByLabel("Description", { exact: true }).fill("Source description.");
+
+  await page.getByRole("button", { name: "Translate to Arabic" }).click();
+  const arTitle = page.getByLabel("العنوان");
+  await expect(arTitle).toHaveValue("[ar] E2E Translate Source");
+
+  // Edit the machine draft before saving.
+  await arTitle.fill("مهمة معدَّلة يدويًا");
+  await page.getByRole("button", { name: "Create quest" }).click();
+  await expect(page).toHaveURL(/\/leader\/quests\/.+\/edit$/);
+
+  // The edited value persisted, not the untouched machine draft.
+  await expect(page.getByLabel("العنوان")).toHaveValue("مهمة معدَّلة يدويًا");
+});
+
+// docs/tasks/11-bilingual.md: "no network call to the LLM occurs on any
+// read path" — this is a plain list-page load, no translate action fired.
+test("loading the quests list makes no network call to the translation service", async ({
+  page,
+}) => {
+  await authenticateQuestLeader(page);
+  const llmRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).hostname === "api.anthropic.com") {
+      llmRequests.push(request.url());
+    }
+  });
+
+  await page.goto("/leader/quests");
+  await expect(page.getByRole("heading", { name: "Quests" })).toBeVisible();
+  expect(llmRequests).toEqual([]);
+});
+
+// docs/tasks/11-bilingual.md: RTL + locale persistence ("locale preference
+// persists across devices for the same scout" — same mechanism for a
+// leader, via people.locale).
+test("switching to Arabic flips page direction and persists across a reload", async ({
+  page,
+}) => {
+  await authenticateQuestLeader(page);
+  await page.goto("/leader/quests");
+
+  await page.getByRole("button", { name: "العربية" }).click();
+  await expect(page.getByRole("heading", { name: "المهام" })).toBeVisible();
+  await expect(page.locator('div[dir="rtl"]').first()).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "المهام" })).toBeVisible();
+
+  // Leave English for every later test/spec run against this leader.
+  await page.getByRole("button", { name: "English" }).click();
+  await expect(page.getByRole("heading", { name: "Quests" })).toBeVisible();
+});

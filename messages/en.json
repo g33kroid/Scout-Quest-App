@@ -1,0 +1,42 @@
+{
+  "common": {
+    "switchToEnglish": "English",
+    "switchToArabic": "العربية"
+  },
+  "leaderQuests": {
+    "title": "Quests",
+    "newQuest": "New quest",
+    "noQuests": "No quests yet.",
+    "newHeading": "New quest",
+    "editHeading": "Edit quest",
+    "tier": "Tier",
+    "kind": "Kind",
+    "solo": "solo",
+    "group": "group",
+    "tierMinor": "minor",
+    "tierStandard": "standard",
+    "tierMajor": "major",
+    "tierEpic": "epic",
+    "tierOption": "{tier} · {points} pts",
+    "statusPublished": "published",
+    "statusDraft": "draft",
+    "untitledDraft": "(untitled draft)",
+    "questSummary": "{tier} · {points} pts · {kind} · {status}",
+    "createQuest": "Create quest",
+    "saveChanges": "Save changes",
+    "prerequisites": "Prerequisites",
+    "noOtherQuests": "No other quests in this unit yet.",
+    "savePrereqs": "Save prerequisites",
+    "publishing": "Publishing",
+    "publishedHint": "Published — visible to scouts in this unit.",
+    "draftHint": "Draft — not yet visible to scouts. Requires both English and Arabic content.",
+    "publish": "Publish",
+    "unpublish": "Unpublish",
+    "translateToArabic": "Translate to Arabic",
+    "translateToEnglish": "Translate to English",
+    "translating": "Translating…",
+    "translateHint": "Fills the other language as an editable draft — review before saving.",
+    "translateError": "Could not translate that. Try again or write it yourself.",
+    "genericSaveError": "Could not save that. Try again."
+  }
+}

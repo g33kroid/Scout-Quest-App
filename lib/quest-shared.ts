@@ -20,3 +20,17 @@ export interface QuestOption {
   id: string;
   title: string;
 }
+
+// Message-file keys (messages/en.json, messages/ar.json) for each enum
+// value — the label itself is locale-dependent, this mapping isn't.
+export const TIER_MESSAGE_KEY: Record<QuestTier, string> = {
+  minor: "leaderQuests.tierMinor",
+  standard: "leaderQuests.tierStandard",
+  major: "leaderQuests.tierMajor",
+  epic: "leaderQuests.tierEpic",
+};
+
+export const KIND_MESSAGE_KEY: Record<QuestKind, string> = {
+  solo: "leaderQuests.solo",
+  group: "leaderQuests.group",
+};
