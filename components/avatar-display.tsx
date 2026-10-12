@@ -5,7 +5,6 @@ interface AvatarDisplayProps {
   config: AvatarConfig;
   // Rendered pixel size (square). Default suits a roster row.
   size?: number;
-  className?: string;
 }
 
 // react-nice-avatar is a pure component (no hooks, no "use client"), so this
@@ -14,10 +13,9 @@ interface AvatarDisplayProps {
 // (docs/tasks/00b-cross-cutting-ui.md: "Avatars render from JSONB config — no
 // image requests at all"). aria-hidden: an avatar is decorative, the scout's
 // name is always the accessible label beside it.
-export function AvatarDisplay({ config, size = 40, className }: AvatarDisplayProps) {
+export function AvatarDisplay({ config, size = 40 }: AvatarDisplayProps) {
   return (
     <span
-      className={className}
       style={{ display: "inline-block", width: size, height: size }}
       aria-hidden="true"
     >

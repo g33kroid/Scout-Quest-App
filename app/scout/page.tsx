@@ -8,7 +8,7 @@ import { AvatarDisplay } from "@/components/avatar-display";
 // leaderboard/rank, only the scout's own streak, activity, and patrol
 // contribution, plus a link out to standings.
 export default async function ScoutHomePage() {
-  const [data, avatar] = await Promise.all([getHomeScreenData(), getOwnAvatar()]);
+  const [data, avatarConfig] = await Promise.all([getHomeScreenData(), getOwnAvatar()]);
 
   if (!data) {
     return (
@@ -20,9 +20,9 @@ export default async function ScoutHomePage() {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col gap-8 px-6 py-8">
-      {avatar && (
+      {avatarConfig && (
         <div className="flex items-center gap-4">
-          <AvatarDisplay config={avatar.config} size={64} />
+          <AvatarDisplay config={avatarConfig} size={64} />
           <Link href="/scout/avatar" className="text-sm text-blue-600">
             Edit avatar
           </Link>

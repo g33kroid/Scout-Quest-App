@@ -43,7 +43,7 @@ export const avatarConfigSchema = z.object({
   isGradient: z.boolean().optional(),
 });
 
-export type ValidatedAvatarConfig = z.infer<typeof avatarConfigSchema>;
+type ValidatedAvatarConfig = z.infer<typeof avatarConfigSchema>;
 
 // Returns a clean config object, or null if the input isn't a usable avatar
 // config. Callers treat null as "fall back to the default".
