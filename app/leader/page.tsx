@@ -5,6 +5,7 @@ import {
   getTodaysSessionsForLeader,
 } from "@/lib/server/leader-roster";
 import { ScoringScreen } from "./scoring-screen";
+import { AvatarDisplay } from "@/components/avatar-display";
 
 // The 15-second screen (docs/tasks/05-leader-scoring.md). Server-resolves
 // context so the common case (exactly one session today) is zero taps: the
@@ -63,11 +64,22 @@ export default async function LeaderHomePage({
   const roster = await getRosterForSession(sessionId);
   const attentionNeeded = await getAttentionNeededScouts(roster.map((s) => s.personId));
 
+  // Avatars rendered here, in the Server Component, so the client scoring
+  // screen gets static SVG and no avatar JS (docs/tasks/12-avatar.md; Task 05
+  // rule 9 — nothing extra on the stopwatch screen's client bundle).
+  const avatars = Object.fromEntries(
+    roster.map((s) => [
+      s.personId,
+      <AvatarDisplay key={s.personId} config={s.avatarConfig} size={40} />,
+    ]),
+  );
+
   return (
     <ScoringScreen
       sessionId={sessionId}
       initialRoster={roster}
       attentionNeeded={attentionNeeded}
+      avatars={avatars}
     />
   );
 }

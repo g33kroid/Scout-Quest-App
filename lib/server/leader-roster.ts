@@ -1,5 +1,6 @@
 import "server-only";
 import { createServerSupabaseClient } from "@/lib/server/supabase-server";
+import { resolveAvatarConfig, type AvatarConfig } from "@/lib/avatar";
 
 // docs/tasks/05-leader-scoring.md: "Leader home route resolves the current
 // context server-side: today's session for their unit... No picker if there
@@ -24,6 +25,9 @@ export interface RosterScout {
   // (docs/tasks/06-attendance.md); the DB only defaults to absent once the
   // session is in the past (see attendance_resolved).
   attendanceStatus: AttendanceStatus | null;
+  // Saved config, or the deterministic default seeded from personId
+  // (docs/tasks/12-avatar.md). Rendered server-side in the roster row.
+  avatarConfig: AvatarConfig;
 }
 
 export interface AttentionScout {
@@ -86,7 +90,7 @@ export async function getRosterForSession(sessionId: string): Promise<RosterScou
 
   const { data: enrollments } = await supabase
     .from("unit_enrollments")
-    .select("person_id, people(display_name)")
+    .select("person_id, people(display_name, avatar_config)")
     .eq("unit_id", session.unit_id)
     .is("ended_at", null);
 
@@ -115,6 +119,7 @@ export async function getRosterForSession(sessionId: string): Promise<RosterScou
         displayName: person?.display_name ?? "",
         awardedToday: awardedIds.has(row.person_id),
         attendanceStatus: statusByPerson.get(row.person_id) ?? null,
+        avatarConfig: resolveAvatarConfig(row.person_id, person?.avatar_config),
       };
     })
     .filter((scout) => scout.displayName)
