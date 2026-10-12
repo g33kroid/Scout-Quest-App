@@ -1,7 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { AvatarEditor } from "./avatar-editor";
-import { defaultAvatarConfig } from "@/lib/avatar";
 
 // The action is a "use server" module; stub it so the editor is exercised in
 // isolation (jsdom, no server runtime).
@@ -27,14 +26,14 @@ describe("AvatarEditor", () => {
   // older package (peer react >=16); this proves it actually mounts under
   // React 19 without throwing, and that our save/cancel chrome renders.
   test("mounts under React 19 and renders the save control", () => {
-    render(<AvatarEditor initialConfig={defaultAvatarConfig("seed-1")} locale="en" />);
+    render(<AvatarEditor seed="seed-1" config={null} locale="en" />);
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Shuffle" })).toBeInTheDocument();
   });
 
   test("save persists the config and navigates home", async () => {
     setAvatarConfigAction.mockResolvedValue(true);
-    render(<AvatarEditor initialConfig={defaultAvatarConfig("seed-1")} locale="en" />);
+    render(<AvatarEditor seed="seed-1" config={null} locale="en" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -45,7 +44,7 @@ describe("AvatarEditor", () => {
 
   test("surfaces an error when the save is rejected", async () => {
     setAvatarConfigAction.mockResolvedValue(false);
-    render(<AvatarEditor initialConfig={defaultAvatarConfig("seed-1")} locale="en" />);
+    render(<AvatarEditor seed="seed-1" config={null} locale="en" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 

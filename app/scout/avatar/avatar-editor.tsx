@@ -3,8 +3,9 @@
 import { useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { AvatarCustomizeInline, REACT_NICE_AVATAR_SECTIONS } from "react-avatar-studio";
+import { genConfig } from "react-nice-avatar";
 import { setAvatarConfigAction } from "@/lib/server/avatar-action";
-import { randomAvatarConfig, type AvatarConfig } from "@/lib/avatar";
+import type { AvatarConfig, ValidatedAvatarConfig } from "@/lib/avatar";
 import { t, type Locale } from "@/lib/i18n/messages";
 
 // ≥48px tap targets (docs/tasks/00b-cross-cutting-ui.md). Passed into the
@@ -21,13 +22,25 @@ function sectionLabels(locale: Locale): Record<string, string> {
 }
 
 interface AvatarEditorProps {
-  initialConfig: AvatarConfig;
+  // The scout's opaque id — deterministic seed for the default when they have
+  // no saved config yet.
+  seed: string;
+  // Their saved config, or null to seed the default from `seed`.
+  config: ValidatedAvatarConfig | null;
   locale: Locale;
 }
 
-export function AvatarEditor({ initialConfig, locale }: AvatarEditorProps) {
+export function AvatarEditor({ seed, config: saved, locale }: AvatarEditorProps) {
   const router = useRouter();
-  const [config, setConfig] = useState<AvatarConfig>(initialConfig);
+  // genConfig runs client-side only (react-nice-avatar is server-hostile under
+  // Next 16; this whole editor is an ssr:false island). A non-empty saved
+  // config wins; otherwise the deterministic default from the seed.
+  const [config, setConfig] = useState<AvatarConfig>(
+    // ValidatedAvatarConfig's style fields are bounded strings, wider than
+    // react-nice-avatar's literal unions, but the runtime value is a real
+    // config — the customiser tolerates the rest.
+    () => (saved as AvatarConfig | null) ?? genConfig(seed),
+  );
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState(false);
 
@@ -84,7 +97,7 @@ export function AvatarEditor({ initialConfig, locale }: AvatarEditorProps) {
         <div className="flex gap-3">
           <button
             type="button"
-            onClick={() => setConfig(randomAvatarConfig())}
+            onClick={() => setConfig(genConfig())}
             disabled={isPending}
             className="flex min-h-12 flex-1 items-center justify-center rounded-lg border border-zinc-300 px-4 text-base"
           >

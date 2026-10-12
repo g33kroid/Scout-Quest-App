@@ -43,17 +43,10 @@ export function ScoringScreen({
   sessionId,
   initialRoster,
   attentionNeeded,
-  avatars,
 }: {
   sessionId: string;
   initialRoster: RosterScout[];
   attentionNeeded: AttentionScout[];
-  // Server-rendered avatar nodes keyed by personId (docs/tasks/12-avatar.md:
-  // "Render server-side for leader rosters"). Pre-rendered in the page so the
-  // 15-second scoring screen (Task 05, rule 9) gets no extra client JS and no
-  // avatar network request — just static SVG in the row. Falls back to the
-  // display-name initial when absent.
-  avatars?: Record<string, React.ReactNode>;
 }) {
   const [roster, setRoster] = useState(initialRoster);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -246,22 +239,17 @@ export function ScoringScreen({
                   aria-pressed={isSelected}
                   className="flex flex-1 items-center gap-3 px-4 py-3 text-start"
                 >
-                  {avatars?.[scout.personId] ? (
-                    <span aria-hidden className="flex h-10 w-10 shrink-0">
-                      {avatars[scout.personId]}
-                    </span>
-                  ) : (
-                    <span
-                      aria-hidden
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-                        isSelected
-                          ? "bg-white text-zinc-900"
-                          : "bg-zinc-200 text-zinc-700"
-                      }`}
-                    >
-                      {scout.displayName.slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
+                  {/* Name initial, not an avatar: the 15-second scoring screen
+                      carries no avatar JS (Task 05, rule 9), and react-nice-avatar
+                      can't server-render under Next 16 (docs/tasks/12-avatar.md). */}
+                  <span
+                    aria-hidden
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+                      isSelected ? "bg-white text-zinc-900" : "bg-zinc-200 text-zinc-700"
+                    }`}
+                  >
+                    {scout.displayName.slice(0, 1).toUpperCase()}
+                  </span>
                   <span className="flex-1 text-base font-medium">
                     {scout.displayName}
                   </span>

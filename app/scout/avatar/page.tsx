@@ -3,16 +3,16 @@ import { getOwnAvatar } from "@/lib/server/avatar";
 import { getLocale } from "@/lib/server/locale";
 import { t } from "@/lib/i18n/messages";
 import { LocaleToggle } from "@/components/locale-toggle";
-import { AvatarEditor } from "./avatar-editor";
+import { AvatarEditorLoader } from "./avatar-editor-loader";
 
 // docs/tasks/12-avatar.md: a scout builds and edits their own avatar. The
 // current config (saved, or the deterministic default from their id) seeds
 // the customiser. dir is set from the locale so the customiser lays out RTL
 // in Arabic ([dir="rtl"] in globals.css + the app's logical-property rule).
 export default async function ScoutAvatarPage() {
-  const [config, locale] = await Promise.all([getOwnAvatar(), getLocale()]);
+  const [avatar, locale] = await Promise.all([getOwnAvatar(), getLocale()]);
 
-  if (!config) {
+  if (!avatar) {
     return (
       <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center px-6 py-8">
         <p>Not signed in.</p>
@@ -35,7 +35,7 @@ export default async function ScoutAvatarPage() {
         </div>
       </div>
 
-      <AvatarEditor initialConfig={config} locale={locale} />
+      <AvatarEditorLoader seed={avatar.seed} config={avatar.config} locale={locale} />
     </main>
   );
 }

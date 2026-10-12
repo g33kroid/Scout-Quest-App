@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { getHomeScreenData } from "@/lib/server/scout-journal";
 import { getOwnAvatar } from "@/lib/server/avatar";
-import { AvatarDisplay } from "@/components/avatar-display";
+import { AvatarView } from "@/components/avatar-view";
 
 // docs/tasks/10-journal.md: personal progression home screen. "Rankings are
 // one tap away, never the landing view" — this queries no
 // leaderboard/rank, only the scout's own streak, activity, and patrol
 // contribution, plus a link out to standings.
 export default async function ScoutHomePage() {
-  const [data, avatarConfig] = await Promise.all([getHomeScreenData(), getOwnAvatar()]);
+  const [data, avatar] = await Promise.all([getHomeScreenData(), getOwnAvatar()]);
 
   if (!data) {
     return (
@@ -20,9 +20,9 @@ export default async function ScoutHomePage() {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col gap-8 px-6 py-8">
-      {avatarConfig && (
+      {avatar && (
         <div className="flex items-center gap-4">
-          <AvatarDisplay config={avatarConfig} size={64} />
+          <AvatarView seed={avatar.seed} config={avatar.config} size={64} />
           <Link href="/scout/avatar" className="text-sm text-blue-600">
             Edit avatar
           </Link>
