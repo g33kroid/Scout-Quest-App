@@ -46,7 +46,7 @@
     "eslint-config-prettier": "^10.1.8",
     "fake-indexeddb": "^6.2.5",
     "husky": "^9.1.6",
-    "jsdom": "^30.1.0",
+    "jsdom": "^30.1.2",
     "lint-staged": "^17.6.0",
     "otpauth": "^9.5.2",
     "pg": "^8.23.0",
