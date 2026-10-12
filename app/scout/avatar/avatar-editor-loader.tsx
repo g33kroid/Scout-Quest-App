@@ -10,7 +10,12 @@ import type { Locale } from "@/lib/i18n/messages";
 // client-side (docs/tasks/12-avatar.md).
 const AvatarEditor = dynamic(
   () => import("./avatar-editor").then((m) => m.AvatarEditor),
-  { ssr: false },
+  {
+    ssr: false,
+    // Reserve the editor's vertical space while its chunk loads so Save/cancel
+    // don't jump into place (00b-cross-cutting-ui.md: CLS < 0.1).
+    loading: () => <div className="min-h-[60vh]" aria-busy="true" />,
+  },
 );
 
 interface AvatarEditorLoaderProps {

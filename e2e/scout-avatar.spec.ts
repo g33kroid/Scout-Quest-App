@@ -15,6 +15,18 @@ async function signInScout(page: import("@playwright/test").Page) {
   await expect(page).toHaveURL(/\/scout$/);
 }
 
+// Open the editor from the home screen and wait for it to be interactive. The
+// editor is a client-only island (react-nice-avatar can't server-render under
+// Next 16), so Save appears once its chunk mounts — allow for a cold chunk
+// load on a throttled CI browser rather than the default 5s.
+async function openEditor(page: import("@playwright/test").Page) {
+  await page.getByRole("link", { name: "Edit avatar" }).click();
+  await expect(page).toHaveURL(/\/scout\/avatar$/);
+  await expect(page.getByRole("button", { name: "Save" })).toBeVisible({
+    timeout: 15000,
+  });
+}
+
 test("home shows an avatar and an edit link; the editor opens", async ({ page }) => {
   await signInScout(page);
 
@@ -22,15 +34,12 @@ test("home shows an avatar and an edit link; the editor opens", async ({ page })
   // react-nice-avatar, never an <img> — no image request on any path).
   await expect(page.getByRole("link", { name: "Edit avatar" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Edit avatar" }).click();
-  await expect(page).toHaveURL(/\/scout\/avatar$/);
-  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+  await openEditor(page);
 });
 
 test("editing and saving persists and returns home", async ({ page }) => {
   await signInScout(page);
-  await page.getByRole("link", { name: "Edit avatar" }).click();
-  await expect(page).toHaveURL(/\/scout\/avatar$/);
+  await openEditor(page);
 
   // Shuffle produces a new config, then save it.
   await page.getByRole("button", { name: "Shuffle" }).click();
@@ -40,8 +49,7 @@ test("editing and saving persists and returns home", async ({ page }) => {
 
 test("no horizontal scroll and the editor is usable at 360px", async ({ page }) => {
   await signInScout(page);
-  await page.getByRole("link", { name: "Edit avatar" }).click();
-  await expect(page).toHaveURL(/\/scout\/avatar$/);
+  await openEditor(page);
 
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -64,8 +72,7 @@ test("no avatar is ever requested as an image", async ({ page }) => {
   });
 
   await signInScout(page);
-  await page.getByRole("link", { name: "Edit avatar" }).click();
-  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+  await openEditor(page);
 
   // Avatars are inline SVG from JSONB config — nothing fetched as an image.
   expect(imageRequests).toHaveLength(0);
