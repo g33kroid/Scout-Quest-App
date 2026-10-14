@@ -24,6 +24,9 @@ export interface RosterScout {
   // (docs/tasks/06-attendance.md); the DB only defaults to absent once the
   // session is in the past (see attendance_resolved).
   attendanceStatus: AttendanceStatus | null;
+  // No avatar here: the 15-second scoring screen (Task 05, rule 9) carries no
+  // avatar JS, and react-nice-avatar can't server-render under Next 16, so the
+  // leader roster shows the display name only (docs/tasks/12-avatar.md).
 }
 
 export interface AttentionScout {

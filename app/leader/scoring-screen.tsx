@@ -239,6 +239,9 @@ export function ScoringScreen({
                   aria-pressed={isSelected}
                   className="flex flex-1 items-center gap-3 px-4 py-3 text-start"
                 >
+                  {/* Name initial, not an avatar: the 15-second scoring screen
+                      carries no avatar JS (Task 05, rule 9), and react-nice-avatar
+                      can't server-render under Next 16 (docs/tasks/12-avatar.md). */}
                   <span
                     aria-hidden
                     className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${

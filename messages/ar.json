@@ -38,5 +38,29 @@
     "translateHint": "يملأ اللغة الأخرى كمسودة قابلة للتعديل — راجعها قبل الحفظ.",
     "translateError": "تعذّرت الترجمة. حاول مرة أخرى أو اكتبها بنفسك.",
     "genericSaveError": "تعذّر الحفظ. حاول مرة أخرى."
+  },
+  "avatar": {
+    "title": "صورتك الرمزية",
+    "edit": "تعديل الصورة الرمزية",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "randomize": "تبديل عشوائي",
+    "saveError": "تعذّر حفظ صورتك الرمزية. حاول مرة أخرى.",
+    "sections": {
+      "sex": "الجسم",
+      "faceColor": "لون البشرة",
+      "earSize": "الأذنان",
+      "hairColor": "لون الشعر",
+      "hairStyle": "الشعر",
+      "hatStyle": "القبعة",
+      "hatColor": "لون القبعة",
+      "eyeStyle": "العينان",
+      "glassesStyle": "النظارة",
+      "noseStyle": "الأنف",
+      "mouthStyle": "الفم",
+      "shirtStyle": "القميص",
+      "shirtColor": "لون القميص",
+      "bgColor": "الخلفية"
+    }
   }
 }

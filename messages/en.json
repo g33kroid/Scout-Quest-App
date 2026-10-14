@@ -38,5 +38,29 @@
     "translateHint": "Fills the other language as an editable draft — review before saving.",
     "translateError": "Could not translate that. Try again or write it yourself.",
     "genericSaveError": "Could not save that. Try again."
+  },
+  "avatar": {
+    "title": "Your avatar",
+    "edit": "Edit avatar",
+    "save": "Save",
+    "cancel": "Cancel",
+    "randomize": "Shuffle",
+    "saveError": "Could not save your avatar. Try again.",
+    "sections": {
+      "sex": "Body",
+      "faceColor": "Skin",
+      "earSize": "Ears",
+      "hairColor": "Hair colour",
+      "hairStyle": "Hair",
+      "hatStyle": "Hat",
+      "hatColor": "Hat colour",
+      "eyeStyle": "Eyes",
+      "glassesStyle": "Glasses",
+      "noseStyle": "Nose",
+      "mouthStyle": "Mouth",
+      "shirtStyle": "Shirt",
+      "shirtColor": "Shirt colour",
+      "bgColor": "Background"
+    }
   }
 }
