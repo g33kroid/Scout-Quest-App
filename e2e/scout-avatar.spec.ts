@@ -63,6 +63,14 @@ test("the customiser renders in Arabic RTL", async ({ page }) => {
   // Switch to Arabic; the page re-renders with dir=rtl on the main element.
   await page.getByRole("button", { name: "العربية" }).click();
   await expect(page.locator("main[dir='rtl']")).toBeVisible();
+
+  // setLocale persists to people.locale server-side (lib/server/locale.ts),
+  // and the e2e scout fixture is shared across every spec and breakpoint
+  // project. Leaving it Arabic poisons every later test that asserts the
+  // English default. Switch back and wait for the server write to land before
+  // the test ends.
+  await page.getByRole("button", { name: "English" }).click();
+  await expect(page.locator("main[dir='ltr']")).toBeVisible();
 });
 
 test("no avatar is ever requested as an image", async ({ page }) => {
