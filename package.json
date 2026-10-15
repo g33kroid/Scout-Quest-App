@@ -20,7 +20,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@node-rs/argon2": "^2.2.1",
+    "@node-rs/argon2": "^2.2.2",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.3",
     "dexie": "^4.4.6",
